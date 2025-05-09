@@ -84,46 +84,45 @@ float seconds_f() {
 }
 
 void calculateEndTime(Shot* s, float goalWeight, float weightOffset) {
-  // Do not  predict end time if there aren't enough espresso measurements yet
-  if( (s->datapoints < N) || (s->weight[s->datapoints-1] < 10) ){
+  // Do not predict end time if there aren't enough espresso measurements yet
+  if ((s->datapoints < N) || (s->weight[s->datapoints - 1] < 10)) {
     s->expected_end_s = MAX_SHOT_DURATION_S;
-  }
-  else{
-    //Get line of best fit (y=mx+b) from the last 10 measurements 
+  } else {
+    // Get line of best fit (y=mx+b) from the last 10 measurements
     float sumXY = 0, sumX = 0, sumY = 0, sumSquaredX = 0, m = 0, b = 0, meanX = 0, meanY = 0;
 
-    for(int i = s->datapoints - N; i < s->datapoints; i++){
-      sumXY+=s->time_s[i]*s->weight[i];
-      sumX+=s->time_s[i];
-      sumY+=s->weight[i];
-      sumSquaredX += ( s->time_s[i] * s->time_s[i] );
+    for (int i = s->datapoints - N; i < s->datapoints; i++) {
+      sumXY += s->time_s[i] * s->weight[i];
+      sumX += s->time_s[i];
+      sumY += s->weight[i];
+      sumSquaredX += (s->time_s[i] * s->time_s[i]);
     }
 
-    m = (N*sumXY-sumX*sumY) / (N*sumSquaredX-(sumX*sumX));
-    meanX = sumX/N;
-    meanY = sumY/N;
-    b = meanY-m*meanX;
+    m = (N * sumXY - sumX * sumY) / (N * sumSquaredX - (sumX * sumX));
+    meanX = sumX / N;
+    meanY = sumY / N;
+    b = meanY - m * meanX;
 
-    //Calculate time at which goal weight will be reached (x = (y-b)/m)
-    s->expected_end_s = (goalWeight - weightOffset - b)/m; 
+    // Calculate time at which goal weight will be reached (x = (y-b)/m)
+    s->expected_end_s = (goalWeight - weightOffset - b) / m;
   }
 }
 
-void setBrewingState(Shot* shot, bool brewing, AcaiaArduinoBLE* scale) {
+void setBrewingState(bool brewing) {
   if(brewing){
     Serial.println("shot started");
-    shot->start_timestamp_s = seconds_f();
-    shot->shotTimer = 0;
-    shot->datapoints = 0;
-    scale->resetTimer();
-    scale->startTimer();
+    shot.start_timestamp_s = seconds_f();
+    shot.shotTimer = 0;
+    shot.datapoints = 0;
+    scale.resetTimer();
+    scale.startTimer();
     if(AUTOTARE){
-      scale->tare();
+      scale.tare();
     }
     Serial.println("Weight Timer End");
   }else{
     Serial.print("ShotEnded by ");
-    switch (shot->end) {
+    switch (shot.end) {
       case ENDTYPE::TIME:
       Serial.println("time");
       break;
@@ -138,10 +137,10 @@ void setBrewingState(Shot* shot, bool brewing, AcaiaArduinoBLE* scale) {
       break;
     }
 
-    shot->end_s = seconds_f() - shot->start_timestamp_s;
-    scale->stopTimer();
+    shot.end_s = seconds_f() - shot.start_timestamp_s;
+    scale.stopTimer();
     if(MOMENTARY &&
-      (ENDTYPE::WEIGHT == shot->end || ENDTYPE::TIME == shot->end)){
+      (ENDTYPE::WEIGHT == shot.end || ENDTYPE::TIME == shot.end)){
       //Pulse button to stop brewing
       digitalWrite(OUT,HIGH);Serial.println("wrote high");
       delay(300);
@@ -155,7 +154,7 @@ void setBrewingState(Shot* shot, bool brewing, AcaiaArduinoBLE* scale) {
   } 
 
   // Reset
-  shot->end = ENDTYPE::UNDEF;
+  shot.end = ENDTYPE::UNDEF;
 }
 
 void updateShotTrajectory(Shot* shot, float currentWeight, float goalWeight, float weightOffset) {
@@ -176,23 +175,23 @@ void updateShotTrajectory(Shot* shot, float currentWeight, float goalWeight, flo
   Serial.println();
 }
 
-void handleMaxDurationReached(Shot* shot, AcaiaArduinoBLE* scale) {
+void handleMaxDurationReached(Shot* shot) {
   if (shot->brewing && shot->shotTimer > MAX_SHOT_DURATION_S) {
     shot->brewing = false;
     Serial.println("Max brew duration reached");
     shot->end = ENDTYPE::TIME;
-    setBrewingState(shot, shot->brewing, scale);
+    setBrewingState(shot->brewing);
   }
 }
 
-void handleShotEnd(Shot* shot, float currentWeight, float goalWeight, float weightOffset, AcaiaArduinoBLE* scale) {
+void handleShotEnd(Shot* shot, float currentWeight) {
   if (shot->brewing 
       && shot->shotTimer >= shot->expected_end_s 
       && shot->shotTimer > MIN_SHOT_DURATION_S) {
     Serial.println("weight achieved");
     shot->brewing = false;
     shot->end = ENDTYPE::WEIGHT;
-    setBrewingState(shot, shot->brewing, scale);
+    setBrewingState(shot->brewing);
   }
 }
 
@@ -225,7 +224,7 @@ void detectShotError(Shot* shot, float currentWeight, float goalWeight, float* w
   }
 }
 
-void handleButtonLogic(Shot* shot, bool* buttonPressed, bool* buttonLatched, int* buttonArr, int* newButtonState) {
+void handleButtonLogic() {
   // Read button every period
   if (millis() > (lastButtonRead_ms + BUTTON_READ_PERIOD_MS)) {
     lastButtonRead_ms = millis();
@@ -237,47 +236,47 @@ void handleButtonLogic(Shot* shot, bool* buttonPressed, bool* buttonLatched, int
     buttonArr[0] = digitalRead(in); // Active Low
 
     // Determine new button state
-    *newButtonState = 0;
+    newButtonState = 0;
     for (int i = 0; i < BUTTON_STATE_ARRAY_LENGTH; i++) {
       if (buttonArr[i]) {
-        *newButtonState = 1;
+        newButtonState = 1;
       }
     }
 
     // Handle reed switch noise
-    if (REEDSWITCH && !shot->brewing && seconds_f() < (shot->start_timestamp_s + shot->end_s + 0.5)) {
-      *newButtonState = 0;
+    if (REEDSWITCH && !shot.brewing && seconds_f() < (shot.start_timestamp_s + shot.end_s + 0.5)) {
+      newButtonState = 0;
     }
   }
 
   // Update button state machine
   switch (buttonState) {
     case IDLE:
-      if (*newButtonState) {
+      if (newButtonState) {
         Serial.println("ButtonPressed");
         buttonState = PRESSED;
-        *buttonPressed = true;
+        buttonPressed = true;
         if (!MOMENTARY) {
-          shot->brewing = true;
-          setBrewingState(shot, shot->brewing, &scale);
+          shot.brewing = true;
+          setBrewingState(shot.brewing);
         }
       }
       break;
 
     case PRESSED:
-      if (!*newButtonState) {
+      if (!newButtonState) {
         Serial.println("Button Released");
         buttonState = RELEASED;
-        *buttonPressed = false;
-        shot->brewing = !shot->brewing;
-        if (!shot->brewing) {
-          shot->end = ENDTYPE::BUTTON;
+        buttonPressed = false;
+        shot.brewing = !shot.brewing;
+        if (!shot.brewing) {
+          shot.end = ENDTYPE::BUTTON;
         }
-        setBrewingState(shot, shot->brewing, &scale);
-      } else if (!MOMENTARY && shot->brewing && !*buttonLatched && (shot->shotTimer > MIN_SHOT_DURATION_S)) {
+        setBrewingState(shot.brewing);
+      } else if (!MOMENTARY && shot.brewing && !buttonLatched && (shot.shotTimer > MIN_SHOT_DURATION_S)) {
         Serial.println("Button Latched");
         buttonState = HELD;
-        *buttonLatched = true;
+        buttonLatched = true;
         digitalWrite(OUT, HIGH);
         Serial.println("wrote high");
         if (AUTOTARE) {
@@ -287,18 +286,18 @@ void handleButtonLogic(Shot* shot, bool* buttonPressed, bool* buttonLatched, int
       break;
 
     case HELD:
-      if (*newButtonState) {
+      if (newButtonState) {
         Serial.println("Button Released");
         buttonState = RELEASED;
-        *buttonPressed = false;
-        shot->brewing = false;
-        shot->end = ENDTYPE::BUTTON;
-        setBrewingState(shot, shot->brewing, &scale);
+        buttonPressed = false;
+        shot.brewing = false;
+        shot.end = ENDTYPE::BUTTON;
+        setBrewingState(shot.brewing);
       }
       break;
 
     case RELEASED:
-      if (!*newButtonState) {
+      if (!newButtonState) {
         buttonState = IDLE;
       }
       break;

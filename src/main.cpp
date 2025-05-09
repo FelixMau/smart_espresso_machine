@@ -66,12 +66,11 @@ void setup() {
 
 
 void loop() {
-
   // Connect to scale
-  while(!scale.isConnected()){
-    scale.init(); 
+  while (!scale.isConnected()) {
+    scale.init();
     currentWeight = 0;
-    if(shot.brewing){
+    if (shot.brewing) {
       setBrewingState(false);
     }
   }
@@ -84,24 +83,24 @@ void loop() {
     Serial.print(" to ");
     goalWeight = weightCharacteristic.value();
     Serial.println(goalWeight);
-    EEPROM.write(WEIGHT_ADDR, goalWeight); //1 byte, 0-255
+    EEPROM.write(WEIGHT_ADDR, goalWeight); // 1 byte, 0-255
     EEPROM.commit();
   }
 
   // Send a heartbeat message to the scale periodically to maintain connection
-  if(scale.heartbeatRequired()){
+  if (scale.heartbeatRequired()) {
     scale.heartbeat();
   }
 
-  // always call newWeightAvailable to actually receive the datapoint from the scale,
+  // Always call newWeightAvailable to actually receive the datapoint from the scale,
   // otherwise getWeight() will return stale data
-  if(scale.newWeightAvailable()){
+  if (scale.newWeightAvailable()) {
     currentWeight = scale.getWeight();
 
     Serial.print(currentWeight);
 
     // Update shot trajectory
-    updateShotTrajectory(&shot, currentWeight);
+    updateShotTrajectory(&shot, currentWeight, goalWeight, weightOffset);
   }
 
   handleButtonLogic();
