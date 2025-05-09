@@ -63,9 +63,6 @@
 // Declare missing functions
 void SendWebsite();
 void SendJSON();
-void StartShot();
-void StopShot();
-void UpdateWeightOffset();
 
 // Declare missing variables
 extern float goalWeight;
@@ -163,9 +160,6 @@ void initializeWiFi() {
 void initializeServer() {
   server.on("/", SendWebsite);
   server.on("/json", SendJSON);
-  server.on("/START_SHOT", StartShot);
-  server.on("/STOP_SHOT", StopShot);
-  server.on("/UPDATE_OFFSET", UpdateWeightOffset);
   server.begin();
 }
 
