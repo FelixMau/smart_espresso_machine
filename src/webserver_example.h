@@ -60,6 +60,20 @@
 #include <Arduino.h>  // standard library
 #include <secrets.h> // this is where you put your wifi credentials
 
+// Declare missing functions
+void SendWebsite();
+void SendJSON();
+void StartShot();
+void StopShot();
+void UpdateWeightOffset();
+
+// Declare missing variables
+extern float goalWeight;
+extern float weightOffset;
+extern float currentWeight;
+extern bool brewing;
+extern float shotTimer;
+extern float expectedEnd;
 
 // here you post web pages to your homes intranet which will make page debugging easier
 // as you just need to refresh the browser as opposed to reconnection to the web server
@@ -101,6 +115,84 @@ IPAddress ip;
 
 // gotta create a server
 WebServer server(80);
+
+
+// Utility functions
+void printWifiStatus() {
+
+  // print the SSID of the network you're attached to:
+  Serial.print("SSID: ");
+  Serial.println(WiFi.SSID());
+
+  // print your WiFi shield's IP address:
+  ip = WiFi.localIP();
+  Serial.print("IP Address: ");
+  Serial.println(ip);
+
+  // print the received signal strength:
+  long rssi = WiFi.RSSI();
+  Serial.print("signal strength (RSSI):");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+  // print where to go in a browser:
+  Serial.print("Open http://");
+  Serial.println(ip);
+}
+
+// Initialization functions
+void initializeWiFi() {
+#ifdef USE_INTRANET
+  WiFi.begin(LOCAL_SSID, LOCAL_PASS);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.print("IP address: "); Serial.println(WiFi.localIP());
+  Actual_IP = WiFi.localIP();
+#else
+  WiFi.softAP(AP_SSID, AP_PASS);
+  delay(100);
+  WiFi.softAPConfig(PageIP, gateway, subnet);
+  delay(100);
+  Actual_IP = WiFi.softAPIP();
+  Serial.print("IP address: "); Serial.println(Actual_IP);
+#endif
+  printWifiStatus();
+}
+
+void initializeServer() {
+  server.on("/", SendWebsite);
+  server.on("/json", SendJSON);
+  server.on("/START_SHOT", StartShot);
+  server.on("/STOP_SHOT", StopShot);
+  server.on("/UPDATE_OFFSET", UpdateWeightOffset);
+  server.begin();
+}
+
+// Web server handlers
+void SendWebsite() {
+
+  Serial.println("sending web page");
+  // you may have to play with this value, big pages need more porcessing time, and hence
+  // a longer timeout that 200 ms
+  server.send(200, "text/html", PAGE_MAIN);
+
+}
+
+// Send JSON data for the web page
+void SendJSON() {
+  String json = "{";
+  json += "\"goalWeight\":" + String(goalWeight) + ",";
+  json += "\"weightOffset\":" + String(weightOffset) + ",";
+  json += "\"currentWeight\":" + String(currentWeight) + ",";
+  json += "\"brewing\":" + String(brewing) + ",";
+  json += "\"shotTimer\":" + String(shotTimer) + ",";
+  json += "\"expectedEnd\":" + String(expectedEnd);
+  json += "}";
+  server.send(200, "application/json", json);
+}
+
+
 
 
 // function managed by an .on method to handle slider actions on the web page
@@ -200,144 +292,19 @@ Serial.print("Button 1 "); Serial.println(LED0);
   */
 }
 
-
-// code to send the main web page
-// PAGE_MAIN is a large char defined in SuperMon.h
-void SendWebsite() {
-
-  Serial.println("sending web page");
-  // you may have to play with this value, big pages need more porcessing time, and hence
-  // a longer timeout that 200 ms
-  server.send(200, "text/html", PAGE_MAIN);
-
-}
-
-// I think I got this code from the wifi example
-void printWifiStatus() {
-
-  // print the SSID of the network you're attached to:
-  Serial.print("SSID: ");
-  Serial.println(WiFi.SSID());
-
-  // print your WiFi shield's IP address:
-  ip = WiFi.localIP();
-  Serial.print("IP Address: ");
-  Serial.println(ip);
-
-  // print the received signal strength:
-  long rssi = WiFi.RSSI();
-  Serial.print("signal strength (RSSI):");
-  Serial.print(rssi);
-  Serial.println(" dBm");
-  // print where to go in a browser:
-  Serial.print("Open http://");
-  Serial.println(ip);
-}
-
-// Function prototypes
-void initializeWiFi();
-void initializeServer();
-void handleClientRequests();
-void updateSensorData();
-
-// Shot control variables
-float goalWeight = 36.0;
-float weightOffset = 1.5;
-float currentWeight = 0.0;
-bool brewing = false;
-float shotTimer = 0.0;
-float expectedEnd = 0.0;
-
-// Handle starting the shot
-void StartShot() {
-  brewing = true;
-  shotTimer = 0;
-  Serial.println("Shot started");
-  server.send(200, "text/plain", "Shot started");
-}
-
-// Handle stopping the shot
-void StopShot() {
-  brewing = false;
-  Serial.println("Shot stopped");
-  server.send(200, "text/plain", "Shot stopped");
-}
-
-// Handle updating the weight offset
-void UpdateWeightOffset() {
-  String value = server.arg("VALUE");
-  weightOffset = value.toFloat();
-  Serial.print("Weight offset updated to: ");
-  Serial.println(weightOffset);
-  server.send(200, "text/plain", "Offset updated");
-}
-
-// Send JSON data for the web page
-void SendJSON() {
-  String json = "{";
-  json += "\"goalWeight\":" + String(goalWeight) + ",";
-  json += "\"weightOffset\":" + String(weightOffset) + ",";
-  json += "\"currentWeight\":" + String(currentWeight) + ",";
-  json += "\"brewing\":" + String(brewing) + ",";
-  json += "\"shotTimer\":" + String(shotTimer) + ",";
-  json += "\"expectedEnd\":" + String(expectedEnd);
-  json += "}";
-  server.send(200, "application/json", json);
-}
-
-// Function implementations
-void initializeWiFi() {
-#ifdef USE_INTRANET
-  WiFi.begin(LOCAL_SSID, LOCAL_PASS);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.print("IP address: "); Serial.println(WiFi.localIP());
-  Actual_IP = WiFi.localIP();
-#else
-  WiFi.softAP(AP_SSID, AP_PASS);
-  delay(100);
-  WiFi.softAPConfig(PageIP, gateway, subnet);
-  delay(100);
-  Actual_IP = WiFi.softAPIP();
-  Serial.print("IP address: "); Serial.println(Actual_IP);
-#endif
-  printWifiStatus();
-}
-
-void initializeServer() {
-  server.on("/", SendWebsite);
-  server.on("/json", SendJSON);
-  server.on("/START_SHOT", StartShot);
-  server.on("/STOP_SHOT", StopShot);
-  server.on("/UPDATE_OFFSET", UpdateWeightOffset);
-  server.begin();
-}
-
+// Main server loop
 void handleClientRequests() {
   server.handleClient();
 }
 
+// Sensor and shot management
 void updateSensorData() {
   if (brewing) {
     shotTimer += 0.05; // Simulate shot timer increment
     currentWeight += 0.1; // Simulate weight increment
     if (currentWeight >= goalWeight - weightOffset) {
-      StopShot();
     }
   }
 }
 
-// Updated setup function
-void setup() {
-  Serial.begin(9600);
-  initializeWiFi();
-  initializeServer();
-}
 
-// Updated loop function
-void loop() {
-  updateSensorData();
-  handleClientRequests();
-}
