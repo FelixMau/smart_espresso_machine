@@ -1,8 +1,3 @@
-/*
- main to define all routines and variables and send execute in correct order
-
-*/
-
 #include <Arduino.h>	
 #include <EEPROM.h>
 #include "webserver.h"
@@ -26,39 +21,39 @@ void setup() {
 
   // Get stored setpoint and offset
   goalWeight = EEPROM.read(WEIGHT_ADDR);
-  weightOffset = EEPROM.read(OFFSET_ADDR)/10.0;
+  weightOffset = EEPROM.read(OFFSET_ADDR) / 10.0;
   Serial.print("Goal Weight retrieved: ");
   Serial.println(goalWeight);
   Serial.print("offset retrieved: ");
   Serial.println(goalWeight);
 
-  //If eeprom isn't initialized and has an 
-  // unreasonable weight/offset, default to 36g/1.5g
-  if( (goalWeight < 10) || (goalWeight > 200) ){
+  // If EEPROM isn't initialized and has an unreasonable weight/offset, default to 36g/1.5g
+  if ((goalWeight < 10) || (goalWeight > 200)) {
     goalWeight = 36;
     Serial.print("Goal Weight set to: ");
     Serial.println(goalWeight);
   }
-  if(weightOffset > MAX_OFFSET){
+  if (weightOffset > MAX_OFFSET) {
     weightOffset = 1.5;
     Serial.print("Offset set to: ");
     Serial.println(weightOffset);
   }
-  
-  // initialize the GPIO hardware
+
+  // Initialize the GPIO hardware
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(in, INPUT_PULLUP);
   pinMode(OUT, OUTPUT);
 
-  // initialize the BLE hardware
+  // Initialize the BLE hardware (only for internal use, no advertising)
   BLE.begin();
   BLE.setLocalName("shotStopper");
   BLE.setAdvertisedService(weightService);
   weightService.addCharacteristic(weightCharacteristic);
   BLE.addService(weightService);
   weightCharacteristic.writeValue(goalWeight);
-  BLE.advertise();
-  Serial.println("Bluetooth® device active, waiting for connections...");
+  Serial.println("Bluetooth® initialized for scale connection only.");
+
+  // Initialize WiFi and web server
   initializeWiFi();
   initializeServer();
 }
@@ -108,7 +103,9 @@ void loop() {
   handleMaxDurationReached(&shot);
   handleShotEnd(&shot, currentWeight);
   detectShotError(&shot, currentWeight, goalWeight, &weightOffset);
-
+  
+  Serial.print("Udating Server....");
   updateSensorData();
   handleClientRequests();
+  Serial.println("updated client requests");
 }

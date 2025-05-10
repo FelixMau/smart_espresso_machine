@@ -1,5 +1,6 @@
 #include <AcaiaArduinoBLE.h>
 #include <EEPROM.h>
+#include <ArduinoJson.h>
 
 #define MAX_OFFSET 5                // In case an error in brewing occured
 #define MIN_SHOT_DURATION_S 3       //Useful for flushing the group.
