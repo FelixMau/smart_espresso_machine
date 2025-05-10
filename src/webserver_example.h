@@ -1,59 +1,3 @@
-/*
-
-
-  this example will show
-  1. how to use and ESP 32 for reading pins
-  2. building a web page for a client (web browser, smartphone, smartTV) to connect to
-  3. sending data from the ESP to the client to update JUST changed data
-  4. sending data from the web page (like a slider or button press) to the ESP to tell the ESP to do something
-
-  If you are not familiar with HTML, CSS page styling, and javascript, be patient, these code platforms are
-  not intuitive and syntax is very inconsitent between platforms
-
-  I know of 4 ways to update a web page
-  1. send the whole page--very slow updates, causes ugly page redraws and is what you see in most examples
-  2. send XML data to the web page that will update just the changed data--fast updates but older method
-  3. JSON strings which are similar to XML but newer method
-  4. web sockets very very fast updates, but not sure all the library support is available for ESP's
-
-  I use XML here...
-
-  compile options
-  1. esp32 dev module
-  2. upload speed 921600
-  3. cpu speed 240 mhz
-  flash speed 80 mhz
-  flash mode qio
-  flash size 4mb
-  partition scheme default
-
-
-  NOTE if your ESP fails to program press the BOOT button during programm when the IDE is "looking for the ESP"
-
-  The MIT License (MIT)
-
-  code writen by Kris Kasprzak
-  
-  Permission is hereby granted, free of charge, to any person obtaining a copy of
-  this software and associated documentation files (the "Software"), to deal in
-  the Software without restriction, including without limitation the rights to
-  use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
-  the Software, and to permit persons to whom the Software is furnished to do so,
-  subject to the following conditions:
-  The above copyright notice and this permission notice shall be included in all
-  copies or substantial portions of the Software.
-  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
-  FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
-  COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
-  IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-  On a personal note, if you develop an application or product using this code 
-  and make millions of dollars, I'm happy for you!
-
-*/
-
 #include <WiFi.h>       // standard library
 #include <WebServer.h>  // standard library
 #include "SuperMon.h"   // .h file that stores your html page code
@@ -173,19 +117,30 @@ void SendWebsite() {
 
 }
 
-// Send JSON data for the web page
 void SendJSON() {
-  String json = "{";
-  json += "\"goalWeight\":" + String(goalWeight) + ",";
-  json += "\"weightOffset\":" + String(weightOffset) + ",";
-  json += "\"currentWeight\":" + String(currentWeight) + ",";
-  json += "\"brewing\":" + String(brewing) + ",";
-  json += "\"shotTimer\":" + String(shotTimer) + ",";
-  json += "\"expectedEnd\":" + String(expectedEnd);
-  json += "}";
-  server.send(200, "application/json", json);
-}
+  // Create a JSON document
+  StaticJsonDocument<512> jsonDoc;
 
+  // Add data to the JSON document
+  jsonDoc["goalWeight"] = goalWeight;
+  jsonDoc["weightOffset"] = weightOffset;
+  jsonDoc["currentWeight"] = currentWeight;
+  jsonDoc["brewing"] = shot.brewing;
+  jsonDoc["shotTimer"] = shot.time_s[0];
+  jsonDoc["expectedEnd"] = shot.expected_end_s;
+
+  // Optionally, add the latest value from the shot.time_s array
+  if (shot.datapoints > 0) {
+    jsonDoc["latestShotTime"] = shot.time_s[shot.datapoints - 1];
+  }
+
+  // Serialize the JSON document to a string
+  String jsonString;
+  serializeJson(jsonDoc, jsonString);
+
+  // Send the JSON string to the client
+  server.send(200, "application/json", jsonString);
+}
 
 
 
@@ -291,13 +246,24 @@ void handleClientRequests() {
   server.handleClient();
 }
 
-// Sensor and shot management
 void updateSensorData() {
-  if (brewing) {
-    shotTimer += 0.05; // Simulate shot timer increment
-    currentWeight += 0.1; // Simulate weight increment
-    if (currentWeight >= goalWeight - weightOffset) {
+  // Only update if new weight data is available
+  if (scale.newWeightAvailable()) {
+    currentWeight = scale.getWeight();
+    Serial.print("Current weight: ");
+    Serial.println(currentWeight);
+
+    // Update shot timer and check if goal weight is reached
+    if (brewing) {
+      shotTimer += 0.05; // Simulate shot timer increment
+      if (currentWeight >= goalWeight - weightOffset) {
+        Serial.println("Goal weight reached!");
+      }
     }
+
+    // Send updated data to the web server
+    handleClientRequests();
+    SendJSON();
   }
 }
 
