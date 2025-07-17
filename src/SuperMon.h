@@ -64,6 +64,10 @@ const char PAGE_MAIN[] PROGMEM = R"=====(
       <td><div class="bodytext">Expected End</div></td>
       <td><div class="tabledata" id="expectedEnd"></div></td>
     </tr>
+    <tr>
+      <td><div class="bodytext">Pressure (MPa)</div></td>
+      <td><div class="tabledata" id="pressure"></div></td>
+    </tr>
   </table>
   <br>
 </main>
@@ -100,6 +104,7 @@ const char PAGE_MAIN[] PROGMEM = R"=====(
         document.getElementById("brewing").innerHTML = data.brewing ? "Yes" : "No";
         document.getElementById("shotTimer").innerHTML = data.shotTimer;
         document.getElementById("expectedEnd").innerHTML = data.expectedEnd;
+        document.getElementById("pressure").innerHTML = data.pressure;
       }
     };
     xmlHttp.open("GET", "json", true);

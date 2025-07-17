@@ -1,6 +1,7 @@
 #include <AcaiaArduinoBLE.h>
 #include <EEPROM.h>
 #include <ArduinoJson.h>
+#include <rbdimmerESP32.h>
 
 #define MAX_OFFSET 5                // In case an error in brewing occured
 #define MIN_SHOT_DURATION_S 3       //Useful for flushing the group.
@@ -34,18 +35,33 @@
 // Board Hardware 
 #ifdef ARDUINO_ESP32S3_DEV
   #define IN          34
-  #define OUT         35
+  #define OUT         22
   #define REED_IN     25
 #else //todo: find nano esp32 identifier
   //LED's are defined by framework
-  #define IN          34
-  #define OUT         35
+  #define IN          13
+  #define OUT         22
   #define REED_IN     25
 #endif 
+
+#define PRESSURE_PIN 33 // Analog pin for pressure sensor (MPX5500 or similar)
 
 #define BUTTON_STATE_ARRAY_LENGTH 8
 
 typedef enum {BUTTON, WEIGHT, TIME, UNDEF} ENDTYPE;
+
+// Helper struct for pressure goal pairs
+struct PressureGoalByTime {
+  float time_s;      // seconds from shot start
+  float pressure;    // goal pressure at this time
+};
+
+struct PressureGoalByTimeLeft {
+  float time_left_s; // seconds left until expected end
+  float pressure;    // override goal pressure from this time left onwards
+};
+
+#define MAX_PRESSURE_GOALS 8
 
 AcaiaArduinoBLE scale(DEBUG);
 float error = 0;
@@ -71,10 +87,33 @@ struct Shot {
   int datapoints;          // Number of datapoitns in the scatter plot
   bool brewing;            // True when actively brewing, otherwise false
   ENDTYPE end;
+  float pressure;          // latest pressure in bar
+
+  // New: pressure goal arrays
+  PressureGoalByTime pressureGoalByTime[MAX_PRESSURE_GOALS];
+  int numPressureGoalsByTime;
+
+  PressureGoalByTimeLeft pressureGoalByTimeLeft[MAX_PRESSURE_GOALS];
+  int numPressureGoalsByTimeLeft;
 };
 
 //Initialize shot
-Shot shot = {0,0,0,0,{},{},0,false,ENDTYPE::UNDEF};
+Shot shot = {
+  0,0,0,0,{},{},0,false,ENDTYPE::UNDEF,
+  0, // pressure
+  // Example: 3 pressure goals by time
+  {
+    {0.0f, 2.0f},    // 0s: 2 bar
+    {5.0f, 9.0f},    // 5s: 9 bar
+    {20.0f, 6.0f}    // 20s: 6 bar
+  },
+  3, // numPressureGoalsByTime
+  // Example: 1 pressure goal by time left
+  {
+    {5.0f, 4.0f}     // 5s left: 4 bar
+  },
+  1  // numPressureGoalsByTimeLeft
+};
 
 //BLE peripheral device
 BLEService weightService("0x0FFE"); // create service
@@ -83,6 +122,21 @@ BLEByteCharacteristic weightCharacteristic("0xFF11",  BLEWrite | BLERead);
 float seconds_f() {
   return millis() / 1000.0;
 }
+
+void updatePressureSensor(Shot* s) {
+  int raw = analogRead(PRESSURE_PIN);
+  float voltage = raw * (3.3f / 4095.0f);
+  if (voltage < 0.4f) {
+    s->pressure = 0.0f;
+  } else if (voltage > 3.3f) {
+    s->pressure = 16.0f;
+  } else {
+    s->pressure = (voltage - 0.4f) * (16.0f / (3.3f - 0.4f));
+  }
+  Serial.print("Pressure: ");
+  Serial.print(s->pressure);
+}
+
 
 void calculateEndTime(Shot* s, float goalWeight, float weightOffset) {
   // Do not predict end time if there aren't enough espresso measurements yet
@@ -158,8 +212,9 @@ void setBrewingState(bool brewing) {
   shot.end = ENDTYPE::UNDEF;
 }
 
-void updateShotTrajectory(Shot* shot, float currentWeight, float goalWeight, float weightOffset) {
+void updateShotTrajectory(Shot* shot, float currentWeight, float goalWeight, float weightOffset, rbdimmer_channel_t* dimmer) {
   if (shot->brewing) {
+    updatePressureSensor(shot);
     shot->time_s[shot->datapoints] = seconds_f() - shot->start_timestamp_s;
     shot->weight[shot->datapoints] = currentWeight;
     shot->shotTimer = shot->time_s[shot->datapoints];
@@ -172,6 +227,36 @@ void updateShotTrajectory(Shot* shot, float currentWeight, float goalWeight, flo
     calculateEndTime(shot, goalWeight, weightOffset);
     Serial.print(" ");
     Serial.print(shot->expected_end_s);
+
+    // --- Pressure goal logic ---
+    float goalPressure = 0.0f;
+    // 1. Find the latest pressure goal by time (<= current time)
+    for (int i = 0; i < shot->numPressureGoalsByTime; ++i) {
+      if (shot->shotTimer >= shot->pressureGoalByTime[i].time_s) {
+        goalPressure = shot->pressureGoalByTime[i].pressure;
+      }
+    }
+    // 2. Check for override by time left
+    float timeLeft = shot->expected_end_s - shot->shotTimer;
+    for (int i = 0; i < shot->numPressureGoalsByTimeLeft; ++i) {
+      if (timeLeft <= shot->pressureGoalByTimeLeft[i].time_left_s) {
+        goalPressure = shot->pressureGoalByTimeLeft[i].pressure;
+      }
+    }
+
+    // Pressure control logic
+    if (shot->pressure < goalPressure) {
+      rbdimmer_set_level(dimmer, 100);
+      Serial.print(" | Pump ON");
+    } else {
+      rbdimmer_set_level(dimmer, 0);
+      Serial.print(" | Pump OFF");
+    }
+    Serial.print(" | GoalPressure: ");
+    Serial.print(goalPressure);
+    // --- end pressure goal logic ---
+    Serial.print("CurrentPressure: ");
+    Serial.print(shot->pressure);
   }
   Serial.println();
 }
@@ -235,8 +320,7 @@ void handleButtonLogic() {
       buttonArr[i + 1] = buttonArr[i];
     }
     buttonArr[0] = digitalRead(in); // Active Low
-
-    // Determine new button state
+        // Determine new button state
     newButtonState = 0;
     for (int i = 0; i < BUTTON_STATE_ARRAY_LENGTH; i++) {
       if (buttonArr[i]) {
@@ -304,3 +388,4 @@ void handleButtonLogic() {
       break;
   }
 }
+
