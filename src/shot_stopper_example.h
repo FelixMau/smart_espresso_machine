@@ -198,7 +198,7 @@ void setBrewingState(bool brewing) {
       (ENDTYPE::WEIGHT == shot.end || ENDTYPE::TIME == shot.end)){
       //Pulse button to stop brewing
       digitalWrite(OUT,HIGH);Serial.println("wrote high");
-      delay(300);
+      delay(1000);
       digitalWrite(OUT,LOW);Serial.println("wrote low");
     }else if(!MOMENTARY){
       buttonLatched = false;

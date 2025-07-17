@@ -12,10 +12,7 @@ void SendJSON();
 extern float goalWeight;
 extern float weightOffset;
 extern float currentWeight;
-extern bool brewing;
 extern float shotTimer;
-extern float expectedEnd;
-extern struct Shot shot; // <-- Add this line
 
 // here you post web pages to your homes intranet which will make page debugging easier
 // as you just need to refresh the browser as opposed to reconnection to the web server
