@@ -15,6 +15,7 @@ extern float currentWeight;
 extern bool brewing;
 extern float shotTimer;
 extern float expectedEnd;
+extern struct Shot shot; // <-- Add this line
 
 // here you post web pages to your homes intranet which will make page debugging easier
 // as you just need to refresh the browser as opposed to reconnection to the web server
@@ -28,12 +29,9 @@ extern float expectedEnd;
 #define PIN_OUTPUT 26 // connected to nothing but an example of a digital write from the web page
 #define PIN_FAN 27    // pin 27 and is a PWM signal to control a fan speed
 #define PIN_LED 2     //On board LED
-#define PIN_A0 34     // some analog input sensor
 
 
 // variables to store measure data and sensor states
-int BitsA0 = 0, BitsA1 = 0;
-float VoltsA0 = 0, VoltsA1 = 0;
 int FanSpeed = 0;
 bool LED0 = false, SomeOutput = false;
 uint32_t SensorUpdate = 0;
@@ -133,6 +131,9 @@ void SendJSON() {
   if (shot.datapoints > 0) {
     jsonDoc["latestShotTime"] = shot.time_s[shot.datapoints - 1];
   }
+
+  // Add pressure reading (in bar)
+  jsonDoc["pressure"] = shot.pressure;
 
   // Serialize the JSON document to a string
   String jsonString;
@@ -250,8 +251,7 @@ void updateSensorData() {
   // Only update if new weight data is available
   if (scale.newWeightAvailable()) {
     currentWeight = scale.getWeight();
-    Serial.print("Current weight: ");
-    Serial.println(currentWeight);
+    
 
     // Update shot timer and check if goal weight is reached
     if (brewing) {
