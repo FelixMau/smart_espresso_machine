@@ -174,7 +174,7 @@ void loop() {
     currentWeight = scale.getWeight();
 
     Serial.print(currentWeight);
-    updateSensorData();
+    updateSensorData(&shot);
 
     // Update shot trajectory
     updateShotTrajectory(&shot, currentWeight, goalWeight, weightOffset, dimmer);
