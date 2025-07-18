@@ -39,8 +39,8 @@
   #define REED_IN     25
 #else //todo: find nano esp32 identifier
   //LED's are defined by framework
-  #define IN          13
-  #define OUT         22
+  #define IN          22
+  #define OUT         13
   #define REED_IN     25
 #endif 
 
