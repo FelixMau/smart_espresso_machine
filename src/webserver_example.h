@@ -4,6 +4,10 @@
 #include <Arduino.h>  // standard library
 #include <secrets.h> // this is where you put your wifi credentials
 
+// Forward declare Shot struct
+struct Shot;
+extern Shot shot;
+
 // Declare missing functions
 void SendWebsite();
 void SendJSON();
@@ -244,14 +248,14 @@ void handleClientRequests() {
   server.handleClient();
 }
 
-void updateSensorData() {
+// Update sensor data, now takes Shot* and uses shot.brewing
+void updateSensorData(Shot* shotPtr) {
   // Only update if new weight data is available
   if (scale.newWeightAvailable()) {
     currentWeight = scale.getWeight();
-    
 
     // Update shot timer and check if goal weight is reached
-    if (brewing) {
+    if (shotPtr->brewing) {
       shotTimer += 0.05; // Simulate shot timer increment
       if (currentWeight >= goalWeight - weightOffset) {
         Serial.println("Goal weight reached!");

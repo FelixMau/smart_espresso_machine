@@ -115,6 +115,9 @@ Shot shot = {
   1  // numPressureGoalsByTimeLeft
 };
 
+// Expose shot for use in other modules
+extern Shot shot;
+
 //BLE peripheral device
 BLEService weightService("0x0FFE"); // create service
 BLEByteCharacteristic weightCharacteristic("0xFF11",  BLEWrite | BLERead);
