@@ -248,17 +248,39 @@ void updateShotTrajectory(Shot* shot, float currentWeight, float goalWeight, flo
     }
 
     // Pressure control logic
+    int setLevel = 0;
     if (shot->pressure < goalPressure) {
-      rbdimmer_set_level(dimmer, 100);
+      setLevel = 100;
+      rbdimmer_set_level(dimmer, setLevel);
       Serial.print(" | Pump ON");
     } else {
-      rbdimmer_set_level(dimmer, 0);
+      setLevel = 0;
+      rbdimmer_set_level(dimmer, setLevel);
       Serial.print(" | Pump OFF");
     }
+    // Print actual dimmer level from API
+    int actualLevel = rbdimmer_get_level(dimmer);
+    Serial.print(" | Dimmer set to ");
+    Serial.print(setLevel);
+    Serial.print("% (actual: ");
+    Serial.print(actualLevel);
+    Serial.print("%)");
+
     Serial.print(" | GoalPressure: ");
     Serial.print(goalPressure);
+
+    // Print detected frequency
+    uint16_t freq = rbdimmer_get_frequency(0); // phase 0 assumed
+    Serial.print(" | Detected mains freq: ");
+    if (freq > 0) {
+      Serial.print(freq);
+      Serial.print(" Hz");
+    } else {
+      Serial.print("detecting...");
+    }
+
     // --- end pressure goal logic ---
-    Serial.print("CurrentPressure: ");
+    Serial.print(" | CurrentPressure: ");
     Serial.print(shot->pressure);
   }
   Serial.println();
