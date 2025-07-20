@@ -1,6 +1,7 @@
 #include <AcaiaArduinoBLE.h>
 #include <EEPROM.h>
 #include <ArduinoJson.h>
+#include <rbdimmerESP32.h>
 
 #define MAX_OFFSET 5                // In case an error in brewing occured
 #define MIN_SHOT_DURATION_S 3       //Useful for flushing the group.
@@ -46,6 +47,7 @@
 #define PRESSURE_PIN 33 // Analog pin for pressure sensor (MPX5500 or similar)
 
 #define BUTTON_STATE_ARRAY_LENGTH 8
+extern const int DIMMER_PIN;
 
 typedef enum {BUTTON, WEIGHT, TIME, UNDEF} ENDTYPE;
 
@@ -214,7 +216,7 @@ void setBrewingState(bool brewing) {
   shot.end = ENDTYPE::UNDEF;
 }
 
-void updateShotTrajectory(Shot* shot, float currentWeight, float goalWeight, float weightOffset, void* /*dimmer*/) {
+void updateShotTrajectory(Shot* shot, float currentWeight, float goalWeight, float weightOffset) {
   if (shot->brewing) {
     updatePressureSensor(shot);
     shot->time_s[shot->datapoints] = seconds_f() - shot->start_timestamp_s;
@@ -246,12 +248,13 @@ void updateShotTrajectory(Shot* shot, float currentWeight, float goalWeight, flo
       }
     }
 
-    // Pressure control logic (simple ON/OFF)
+    // Pressure control logic
+    int setLevel = 0;
     if (shot->pressure < goalPressure) {
-      digitalWrite(DIMMER_PIN, HIGH); // Pump ON
+      digitalWrite(DIMMER_PIN, HIGH); // Ensure pump is ON
       Serial.print(" | Pump ON");
     } else {
-      digitalWrite(DIMMER_PIN, LOW); // Pump OFF
+      digitalWrite(DIMMER_PIN, LOW); // Ensure pump is OFF
       Serial.print(" | Pump OFF");
     }
 
@@ -371,27 +374,6 @@ void handleButtonLogic() {
         if (AUTOTARE) {
           scale.tare();
         }
-      }
-      break;
-
-    case HELD:
-      if (newButtonState) {
-        Serial.println("Button Released");
-        buttonState = RELEASED;
-        buttonPressed = false;
-        shot.brewing = false;
-        shot.end = ENDTYPE::BUTTON;
-        setBrewingState(shot.brewing);
-      }
-      break;
-
-    case RELEASED:
-      if (!newButtonState) {
-        buttonState = IDLE;
-      }
-      break;
-  }
-}
       }
       break;
 
