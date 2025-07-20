@@ -1,7 +1,6 @@
 #include <AcaiaArduinoBLE.h>
 #include <EEPROM.h>
 #include <ArduinoJson.h>
-#include <rbdimmerESP32.h>
 
 #define MAX_OFFSET 5                // In case an error in brewing occured
 #define MIN_SHOT_DURATION_S 3       //Useful for flushing the group.
@@ -215,7 +214,7 @@ void setBrewingState(bool brewing) {
   shot.end = ENDTYPE::UNDEF;
 }
 
-void updateShotTrajectory(Shot* shot, float currentWeight, float goalWeight, float weightOffset, rbdimmer_channel_t* dimmer) {
+void updateShotTrajectory(Shot* shot, float currentWeight, float goalWeight, float weightOffset, void* /*dimmer*/) {
   if (shot->brewing) {
     updatePressureSensor(shot);
     shot->time_s[shot->datapoints] = seconds_f() - shot->start_timestamp_s;
@@ -247,37 +246,17 @@ void updateShotTrajectory(Shot* shot, float currentWeight, float goalWeight, flo
       }
     }
 
-    // Pressure control logic
-    int setLevel = 0;
+    // Pressure control logic (simple ON/OFF)
     if (shot->pressure < goalPressure) {
-      setLevel = 100;
-      rbdimmer_set_level(dimmer, setLevel);
+      digitalWrite(DIMMER_PIN, HIGH); // Pump ON
       Serial.print(" | Pump ON");
     } else {
-      setLevel = 0;
-      rbdimmer_set_level(dimmer, setLevel);
+      digitalWrite(DIMMER_PIN, LOW); // Pump OFF
       Serial.print(" | Pump OFF");
     }
-    // Print actual dimmer level from API
-    int actualLevel = rbdimmer_get_level(dimmer);
-    Serial.print(" | Dimmer set to ");
-    Serial.print(setLevel);
-    Serial.print("% (actual: ");
-    Serial.print(actualLevel);
-    Serial.print("%)");
 
     Serial.print(" | GoalPressure: ");
     Serial.print(goalPressure);
-
-    // Print detected frequency
-    uint16_t freq = rbdimmer_get_frequency(0); // phase 0 assumed
-    Serial.print(" | Detected mains freq: ");
-    if (freq > 0) {
-      Serial.print(freq);
-      Serial.print(" Hz");
-    } else {
-      Serial.print("detecting...");
-    }
 
     // --- end pressure goal logic ---
     Serial.print(" | CurrentPressure: ");
@@ -392,6 +371,27 @@ void handleButtonLogic() {
         if (AUTOTARE) {
           scale.tare();
         }
+      }
+      break;
+
+    case HELD:
+      if (newButtonState) {
+        Serial.println("Button Released");
+        buttonState = RELEASED;
+        buttonPressed = false;
+        shot.brewing = false;
+        shot.end = ENDTYPE::BUTTON;
+        setBrewingState(shot.brewing);
+      }
+      break;
+
+    case RELEASED:
+      if (!newButtonState) {
+        buttonState = IDLE;
+      }
+      break;
+  }
+}
       }
       break;
 
