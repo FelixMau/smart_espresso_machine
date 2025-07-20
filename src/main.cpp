@@ -5,8 +5,9 @@
 #include "webserver_example.h"
 #include "secrets.h"
 
+
+const int DIMMER_PIN = 5;
 #define ZERO_CROSS_PIN 4  ///< GPIO pin connected to zero-cross detector output
-#define DIMMER_PIN 5      ///< GPIO pin connected to dimmer control input
 #define PHASE_NUM 0        ///< Phase number (0 for single-phase systems)
 #define INITIAL_BRIGHTNESS 100  ///< Initial brightness level in percent (0-100)
 #define MAINS_FREQUENCY 0      ///< Mains frequency: 0=auto-detect, 50=50Hz, 60=60Hz
@@ -65,10 +66,7 @@ void setup() {
 
   // Remove all RBDimmer logic and frequency detection
   // Instead, just set the dimmer pin LOW (off) initially
-  digitalWrite(DIMMER_PIN, LOW);
-  Serial.println("\n=== Simple Dimmer ON/OFF Example ===");
-  Serial.println("Dimmer pin initialized to LOW (OFF).");
-  Serial.println("Setup complete!");
+  digitalWrite(DIMMER_PIN, HIGH);
 }
 
 
@@ -111,72 +109,7 @@ void loop() {
     updateSensorData(&shot);
 
     // Update shot trajectory
-    updateShotTrajectory(&shot, currentWeight, goalWeight, weightOffset, nullptr); // Pass nullptr for dimmer
-  }
-
-  handleButtonLogic();
-  
-  handleMaxDurationReached(&shot);
-  handleShotEnd(&shot, currentWeight);
-  detectShotError(&shot, currentWeight, goalWeight, &weightOffset);
-}
-    // Print status information
-    Serial.println("\nSetup complete! Dimmer is active.");
-    Serial.println("The connected load should now be at 50% brightness");
-    
-    // Wait a moment for frequency detection
-    delay(500);
-    
-    // Print detected frequency
-    uint16_t frequency = rbdimmer_get_frequency(PHASE_NUM);
-    if (frequency > 0) {
-        Serial.printf("Detected mains frequency: %d Hz\n", frequency);
-    } else {
-        Serial.println("Frequency detection in progress...");
-    }
-}
-
-
-
-void loop() {
-  // Connect to scale
-  while (!scale.isConnected()) {
-    scale.init();
-    rbdimmer_set_level(dimmer, 100); // Ensure pump is on
-    currentWeight = 0;
-    if (shot.brewing) {
-      setBrewingState(false);
-    }
-  }
-
-
-  // Check for setpoint updates
-  BLE.poll();
-  if (weightCharacteristic.written()) {
-    Serial.print("goal weight updated from ");
-    Serial.print(goalWeight);
-    Serial.print(" to ");
-    goalWeight = weightCharacteristic.value();
-    Serial.println(goalWeight);
-    EEPROM.write(WEIGHT_ADDR, goalWeight); // 1 byte, 0-255
-    EEPROM.commit();
-  }
-
-  // Send a heartbeat message to the scale periodically to maintain connection
-  if (scale.heartbeatRequired()) {
-    scale.heartbeat();
-  }
-
-  // Always call newWeightAvailable to actually receive the datapoint from the scale,
-  // otherwise getWeight() will return stale data
-  if (scale.newWeightAvailable()) {
-    currentWeight = scale.getWeight();
-
-    Serial.print(currentWeight);
-    updateSensorData(&shot);
-
-    // Update shot trajectory
-    updateShotTrajectory(&shot, currentWeight, goalWeight, weightOffset, dimmer);
+    updateShotTrajectory(&shot, currentWeight, goalWeight, weightOffset); // Pass nullptr for dimmer
   }
 
   handleButtonLogic();
