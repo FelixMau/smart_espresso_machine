@@ -3,7 +3,6 @@
 #include "shot_stopper.h"
 #include "AcaiaArduinoBLE.h"
 #include "webserver.h"
-#include "secrets.h"
 
 
 const int DIMMER_PIN = 5;
