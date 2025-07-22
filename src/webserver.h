@@ -25,6 +25,19 @@ String readShotPressure() {
 String readShotTime() {
   return String(shot.shotTimer, 1);
 }
+ 
+String readShotexpectedEnd() {
+  return String(shot.expected_end_s, 1);
+}
+
+String readShotWeightGoal() {
+  return String(shot.goalWeight, 1);
+}   
+
+String readShotWeightOffset() {
+  return String(shot.weightOffset, 1);
+}
+
 
 // HTML-Seite mit Platzhaltern %TEMPERATURE% / %HUMIDITY%
 const char index_html[] PROGMEM = R"rawliteral(
@@ -43,10 +56,16 @@ const char index_html[] PROGMEM = R"rawliteral(
   <p>Weight: <span id="weight">%WEIGHT%</span> g</p>
   <p>Pressure: <span id="pressure">%PRESSURE%</span> bar</p>
   <p>Time: <span id="shottime">%SHOTTIME%</span> s</p>
+    <p>Expected End: <span id="expected_end">%EXPECTED_END%</span> s</p>
+    <p>Goal Weight: <span id="goal_weight">%GOAL_WEIGHT%</span> g</p>
+    <p>Weight Offset: <span id="weight_offset">%WEIGHT_OFFSET%</span> g</p>
 <script>
   setInterval(()=>fetch('/weight').then(r=>r.text()).then(v=>document.getElementById('weight').textContent=v), 1000);
   setInterval(()=>fetch('/pressure').then(r=>r.text()).then(v=>document.getElementById('pressure').textContent=v), 1000);
   setInterval(()=>fetch('/shottime').then(r=>r.text()).then(v=>document.getElementById('shottime').textContent=v), 1000);
+    setInterval(()=>fetch('/expected_end').then(r=>r.text()).then(v=>document.getElementById('expected_end').textContent=v), 1000);
+    setInterval(()=>fetch('/goal_weight').then(r=>r.text()).then(v=>document.getElementById('goal_weight').textContent=v), 1000);
+    setInterval(()=>fetch('/weight_offset').then(r=>r.text()).then(v=>document.getElementById('weight_offset').textContent=v), 1000);
 </script>
 </body></html>
 )rawliteral";
@@ -56,6 +75,9 @@ String processor(const String& var){
   if (var == "WEIGHT")   return readShotWeight();
   if (var == "PRESSURE") return readShotPressure();
   if (var == "SHOTTIME") return readShotTime();
+    if (var == "EXPECTED_END") return readShotexpectedEnd();
+    if (var == "GOAL_WEIGHT") return readShotWeightGoal();
+    if (var == "WEIGHT_OFFSET") return readShotWeightOffset();
   return String();
 }
 
@@ -88,6 +110,15 @@ server.on("/pressure", HTTP_GET, [](AsyncWebServerRequest *req){
 });
 server.on("/shottime", HTTP_GET, [](AsyncWebServerRequest *req){
   req->send(200, "text/plain", readShotTime());
+});
+server.on("/expected_end", HTTP_GET, [](AsyncWebServerRequest *req){
+  req->send(200, "text/plain", readShotexpectedEnd());
+});
+server.on("/goal_weight", HTTP_GET, [](AsyncWebServerRequest *req){
+  req->send(200, "text/plain", readShotWeightGoal());
+});
+server.on("/weight_offset", HTTP_GET, [](AsyncWebServerRequest *req){
+  req->send(200, "text/plain", readShotWeightOffset());
 });
 
   // Server starten
