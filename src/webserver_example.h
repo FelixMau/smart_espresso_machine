@@ -20,7 +20,7 @@ extern float shotTimer;
 
 // here you post web pages to your homes intranet which will make page debugging easier
 // as you just need to refresh the browser as opposed to reconnection to the web server
-#define USE_INTRANET
+// #define USE_INTRANET
 
 // once  you are read to go live these settings are what you client will connect to
 #define AP_SSID "DallaCorteMini"
