@@ -13,8 +13,8 @@ const int DIMMER_PIN = 5;
 #define MAINS_FREQUENCY 0      ///< Mains frequency: 0=auto-detect, 50=50Hz, 60=60Hz
 
 // Define global variables
-float goalWeight = 36.0;
-float weightOffset = 1.5;
+float read_goalWeight = 36.0;
+float read_weightOffset = 1.5;
 float currentWeight = 0.0;
 bool brewing = false;
 float shotTimer = 0.0;
@@ -26,23 +26,23 @@ void setup() {
   EEPROM.begin(EEPROM_SIZE);
 
   // Get stored setpoint and offset
-  goalWeight = EEPROM.read(WEIGHT_ADDR);
-  weightOffset = EEPROM.read(OFFSET_ADDR) / 10.0;
+  read_goalWeight = EEPROM.read(WEIGHT_ADDR);
+  read_weightOffset = EEPROM.read(OFFSET_ADDR) / 10.0;
   Serial.print("Goal Weight retrieved: ");
-  Serial.println(goalWeight);
+  Serial.println(read_goalWeight);
   Serial.print("offset retrieved: ");
-  Serial.println(goalWeight);
+  Serial.println(read_goalWeight);
 
   // If EEPROM isn't initialized and has an unreasonable weight/offset, default to 36g/1.5g
-  if ((goalWeight < 10) || (goalWeight > 200)) {
-    goalWeight = 36;
+  if ((read_goalWeight < 10) || (read_goalWeight > 200)) {
+    read_goalWeight = 36;
     Serial.print("Goal Weight set to: ");
-    Serial.println(goalWeight);
+    Serial.println(read_goalWeight);
   }
-  if (weightOffset > MAX_OFFSET) {
-    weightOffset = 1.5;
+  if (read_weightOffset > MAX_OFFSET) {
+    read_weightOffset = 1.5;
     Serial.print("Offset set to: ");
-    Serial.println(weightOffset);
+    Serial.println(read_weightOffset);
   }
 
   // Initialize the GPIO hardware
@@ -54,15 +54,11 @@ void setup() {
   // Initialize the BLE hardware (only for internal use, no advertising)
   BLE.begin();
   BLE.setLocalName("shotStopper");
-  BLE.setAdvertisedService(weightService);
-  weightService.addCharacteristic(weightCharacteristic);
-  BLE.addService(weightService);
-  weightCharacteristic.writeValue(goalWeight);
   Serial.println("Bluetooth® initialized for scale connection only.");
 
   // Initialize WiFi and web server
-  initializeWiFi();
-  initializeServer();
+  //initializeWiFi();
+  //initializeServer(&shot);
 
   // Remove all RBDimmer logic and frequency detection
   // Instead, just set the dimmer pin LOW (off) initially
@@ -84,16 +80,7 @@ void loop() {
 
 
   // Check for setpoint updates
-  BLE.poll();
-  if (weightCharacteristic.written()) {
-    Serial.print("goal weight updated from ");
-    Serial.print(goalWeight);
-    Serial.print(" to ");
-    goalWeight = weightCharacteristic.value();
-    Serial.println(goalWeight);
-    EEPROM.write(WEIGHT_ADDR, goalWeight); // 1 byte, 0-255
-    EEPROM.commit();
-  }
+    
 
   // Send a heartbeat message to the scale periodically to maintain connection
   if (scale.heartbeatRequired()) {
@@ -106,15 +93,15 @@ void loop() {
     currentWeight = scale.getWeight();
 
     Serial.print(currentWeight);
-    updateSensorData(&shot);
+    //updateWebServer(&shot);
 
     // Update shot trajectory
-    updateShotTrajectory(&shot, currentWeight, goalWeight, weightOffset); // Pass nullptr for dimmer
+    updateShotTrajectory(&shot, currentWeight); // Pass nullptr for dimmer
   }
 
   handleButtonLogic();
   
   handleMaxDurationReached(&shot);
   handleShotEnd(&shot, currentWeight);
-  detectShotError(&shot, currentWeight, goalWeight, &weightOffset);
+  detectShotError(&shot, currentWeight);
 }
