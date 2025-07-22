@@ -234,6 +234,10 @@ void updateShotTrajectory(Shot* shot, float currentWeight) {
     Serial.print(" ");
     Serial.print(shot->expected_end_s);
 
+    Serial.print(" ");
+    Serial.print("goal Weight:");
+    Serial.print(shot->goalWeight);
+
     // --- Pressure goal logic ---
     float goalPressure = 0.0f;
     // 1. Find the latest pressure goal by time (<= current time)
