@@ -1,8 +1,8 @@
 #include <Arduino.h>	
 #include <EEPROM.h>
-#include "shot_stopper_example.h"
+#include "shot_stopper.h"
 #include "AcaiaArduinoBLE.h"
-#include "webserver_example.h"
+#include "webserver.h"
 #include "secrets.h"
 
 
@@ -64,6 +64,8 @@ void setup() {
   // Instead, just set the dimmer pin LOW (off) initially
   digitalWrite(DIMMER_PIN, HIGH);
   shot.goalWeight = read_goalWeight;
+  
+  startwifi(); // Start WiFi connection
 }
 
 
