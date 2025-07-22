@@ -63,6 +63,7 @@ void setup() {
   // Remove all RBDimmer logic and frequency detection
   // Instead, just set the dimmer pin LOW (off) initially
   digitalWrite(DIMMER_PIN, HIGH);
+  shot.goalWeight = read_goalWeight;
 }
 
 
