@@ -79,23 +79,25 @@ enum ButtonState { IDLE, PRESSED, HELD, RELEASED };
 ButtonState buttonState = IDLE;
 
 struct Shot {
-  float start_timestamp_s; // Relative to runtime
-  float shotTimer;         // Reset when the final drip measurement is made
-  float end_s;             // Number of seconds after the shot started
-  float expected_end_s;    // Estimated duration of the shot
-  float weight[1000];      // A scatter plot of the weight measurements, along with time_s[]
-  float time_s[1000];      // Number of seconds after the shot starte
-  int datapoints;          // Number of datapoitns in the scatter plot
-  bool brewing;            // True when actively brewing, otherwise false
+  float start_timestamp_s;
+  float shotTimer;
+  float end_s;
+  float expected_end_s;
+  float weight[1000];
+  float time_s[1000];
+  int datapoints;
+  bool brewing;
   ENDTYPE end;
-  float pressure;          // latest pressure in bar
-
-  // New: pressure goal arrays
+  float pressure;
+  // Pressure goals...
   PressureGoalByTime pressureGoalByTime[MAX_PRESSURE_GOALS];
   int numPressureGoalsByTime;
-
   PressureGoalByTimeLeft pressureGoalByTimeLeft[MAX_PRESSURE_GOALS];
   int numPressureGoalsByTimeLeft;
+
+  // Add these:
+  float goalWeight;
+  float weightOffset;
 };
 
 //Initialize shot
@@ -142,7 +144,7 @@ void updatePressureSensor(Shot* s) {
 }
 
 
-void calculateEndTime(Shot* s, float goalWeight, float weightOffset) {
+void calculateEndTime(Shot* s) {
   // Do not predict end time if there aren't enough espresso measurements yet
   if ((s->datapoints < N) || (s->weight[s->datapoints - 1] < 10)) {
     s->expected_end_s = MAX_SHOT_DURATION_S;
@@ -163,7 +165,7 @@ void calculateEndTime(Shot* s, float goalWeight, float weightOffset) {
     b = meanY - m * meanX;
 
     // Calculate time at which goal weight will be reached (x = (y-b)/m)
-    s->expected_end_s = (goalWeight - weightOffset - b) / m;
+    s->expected_end_s = (s->goalWeight - s->weightOffset - b) / m;
   }
 }
 
@@ -216,7 +218,7 @@ void setBrewingState(bool brewing) {
   shot.end = ENDTYPE::UNDEF;
 }
 
-void updateShotTrajectory(Shot* shot, float currentWeight, float goalWeight, float weightOffset) {
+void updateShotTrajectory(Shot* shot, float currentWeight) {
   if (shot->brewing) {
     updatePressureSensor(shot);
     shot->time_s[shot->datapoints] = seconds_f() - shot->start_timestamp_s;
@@ -228,7 +230,7 @@ void updateShotTrajectory(Shot* shot, float currentWeight, float goalWeight, flo
     Serial.print(shot->shotTimer);
 
     // Get the likely end time of the shot
-    calculateEndTime(shot, goalWeight, weightOffset);
+    calculateEndTime(shot);
     Serial.print(" ");
     Serial.print(shot->expected_end_s);
 
@@ -288,10 +290,10 @@ void handleShotEnd(Shot* shot, float currentWeight) {
   }
 }
 
-void detectShotError(Shot* shot, float currentWeight, float goalWeight, float* weightOffset) {
+void detectShotError(Shot* shot, float currentWeight) {
   if (shot->start_timestamp_s
       && shot->end_s
-      && currentWeight >= (goalWeight - *weightOffset)
+      && currentWeight >= (shot->goalWeight - shot->weightOffset)
       && seconds_f() > shot->start_timestamp_s + shot->end_s + DRIP_DELAY_S) {
     shot->start_timestamp_s = 0;
     shot->end_s = 0;
@@ -299,18 +301,18 @@ void detectShotError(Shot* shot, float currentWeight, float goalWeight, float* w
     Serial.print("I detected a final weight of ");
     Serial.print(currentWeight);
     Serial.print("g. The goal was ");
-    Serial.print(goalWeight);
+    Serial.print(shot->goalWeight);
     Serial.print("g with a negative offset of ");
-    Serial.print(*weightOffset);
+    Serial.print(shot->weightOffset);
 
-    if (abs(currentWeight - goalWeight + *weightOffset) > MAX_OFFSET) {
+    if (abs(currentWeight - shot->goalWeight + shot->weightOffset) > MAX_OFFSET) {
       Serial.print("g. Error assumed. Offset unchanged. ");
     } else {
       Serial.print("g. Next time I'll create an offset of ");
-      *weightOffset += currentWeight - goalWeight;
-      Serial.print(*weightOffset);
+      shot->weightOffset += currentWeight - shot->goalWeight;
+      Serial.print(shot->weightOffset);
 
-      EEPROM.write(OFFSET_ADDR, *weightOffset * 10); // 1 byte, 0-255
+      EEPROM.write(OFFSET_ADDR, shot->weightOffset * 10); // 1 byte, 0-255
       EEPROM.commit();
     }
     Serial.println();
