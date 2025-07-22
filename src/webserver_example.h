@@ -23,8 +23,8 @@ extern float shotTimer;
 #define USE_INTRANET
 
 // once  you are read to go live these settings are what you client will connect to
-#define AP_SSID "TestWebSite"
-#define AP_PASS "023456789"
+#define AP_SSID "DallaCorteMini"
+#define AP_PASS "DC_mini"
 
 // start your defines for pins for sensors, outputs etc.
 #define PIN_OUTPUT 26 // connected to nothing but an example of a digital write from the web page
