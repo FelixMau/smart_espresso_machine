@@ -61,6 +61,10 @@ const char index_html[] PROGMEM = R"rawliteral(
   <p>Goal Weight: <span id="goal_weight">%GOAL_WEIGHT%</span> g</p>
   <input id="goal_input" type="number" step="0.1" value="%GOAL_WEIGHT%"/>
   <button onclick="updateGoalWeight()">Set Goal</button>
+  <h3>Pressure Profile</h3>
+  <p>Times (comma separated): <input id="profile_times" type="text" value="" /></p>
+  <p>Pressures (comma separated): <input id="profile_pressures" type="text" value="" /></p>
+  <button onclick="updatePressureProfile()">Set Profile</button>
   <p>Weight Offset: <span id="weight_offset">%WEIGHT_OFFSET%</span> g</p>
 <script>
   setInterval(()=>fetch('/weight').then(r=>r.text()).then(v=>document.getElementById('weight').textContent=v), 1000);
@@ -73,6 +77,13 @@ const char index_html[] PROGMEM = R"rawliteral(
   function updateGoalWeight() {
     const val = document.getElementById('goal_input').value;
     fetch('/set_goal_weight?value=' + val, {method: 'GET'});
+  }
+
+  function updatePressureProfile() {
+    const times = document.getElementById('profile_times').value;
+    const pressures = document.getElementById('profile_pressures').value;
+    const url = '/set_pressure_profile?times=' + encodeURIComponent(times) + '&pressures=' + encodeURIComponent(pressures);
+    fetch(url, {method: 'GET'});
   }
 </script>
 </body></html>
@@ -134,6 +145,25 @@ server.on("/set_goal_weight", HTTP_GET, [](AsyncWebServerRequest *req){
     shot.goalWeight = gw;
     EEPROM.write(WEIGHT_ADDR, (uint8_t)gw);
     EEPROM.commit();
+  }
+  req->send(200, "text/plain", "OK");
+});
+server.on("/set_pressure_profile", HTTP_GET, [](AsyncWebServerRequest *req){
+  if (req->hasParam("times") && req->hasParam("pressures")) {
+    String times = req->getParam("times")->value();
+    String pressures = req->getParam("pressures")->value();
+    shot.numPressureGoalsByTime = 0;
+    while (times.length() && pressures.length() && shot.numPressureGoalsByTime < MAX_PRESSURE_GOALS) {
+      int tIdx = times.indexOf(',');
+      String t = tIdx >= 0 ? times.substring(0, tIdx) : times;
+      times = tIdx >= 0 ? times.substring(tIdx + 1) : "";
+      int pIdx = pressures.indexOf(',');
+      String p = pIdx >= 0 ? pressures.substring(0, pIdx) : pressures;
+      pressures = pIdx >= 0 ? pressures.substring(pIdx + 1) : "";
+      shot.pressureGoalByTime[shot.numPressureGoalsByTime].time_s = t.toFloat();
+      shot.pressureGoalByTime[shot.numPressureGoalsByTime].pressure = p.toFloat();
+      shot.numPressureGoalsByTime++;
+    }
   }
   req->send(200, "text/plain", "OK");
 });
