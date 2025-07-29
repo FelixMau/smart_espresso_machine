@@ -316,7 +316,7 @@ void detectShotError(Shot* shot, float currentWeight) {
       shot->weightOffset += currentWeight - shot->goalWeight;
       Serial.print(shot->weightOffset);
 
-      EEPROM.write(OFFSET_ADDR, shot->weightOffset * 10); // 1 byte, 0-255
+      EEPROM.write(OFFSET_ADDR, (uint8_t)(shot->weightOffset * 10)); // 1 byte, 0-255
       EEPROM.commit();
     }
     Serial.println();
