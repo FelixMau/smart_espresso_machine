@@ -153,16 +153,29 @@ server.on("/set_pressure_profile", HTTP_GET, [](AsyncWebServerRequest *req){
     String times = req->getParam("times")->value();
     String pressures = req->getParam("pressures")->value();
     shot.numPressureGoalsByTime = 0;
-    while (times.length() && pressures.length() && shot.numPressureGoalsByTime < MAX_PRESSURE_GOALS) {
+    shot.numPressureGoalsByTimeLeft = 0;
+    while (times.length() && pressures.length() &&
+           (shot.numPressureGoalsByTime < MAX_PRESSURE_GOALS ||
+            shot.numPressureGoalsByTimeLeft < MAX_PRESSURE_GOALS)) {
       int tIdx = times.indexOf(',');
       String t = tIdx >= 0 ? times.substring(0, tIdx) : times;
       times = tIdx >= 0 ? times.substring(tIdx + 1) : "";
       int pIdx = pressures.indexOf(',');
       String p = pIdx >= 0 ? pressures.substring(0, pIdx) : pressures;
       pressures = pIdx >= 0 ? pressures.substring(pIdx + 1) : "";
-      shot.pressureGoalByTime[shot.numPressureGoalsByTime].time_s = t.toFloat();
-      shot.pressureGoalByTime[shot.numPressureGoalsByTime].pressure = p.toFloat();
-      shot.numPressureGoalsByTime++;
+
+      float timeVal = t.toFloat();
+      float pressureVal = p.toFloat();
+
+      if (timeVal < 0 && shot.numPressureGoalsByTimeLeft < MAX_PRESSURE_GOALS) {
+        shot.pressureGoalByTimeLeft[shot.numPressureGoalsByTimeLeft].time_left_s = -timeVal;
+        shot.pressureGoalByTimeLeft[shot.numPressureGoalsByTimeLeft].pressure = pressureVal;
+        shot.numPressureGoalsByTimeLeft++;
+      } else if (timeVal >= 0 && shot.numPressureGoalsByTime < MAX_PRESSURE_GOALS) {
+        shot.pressureGoalByTime[shot.numPressureGoalsByTime].time_s = timeVal;
+        shot.pressureGoalByTime[shot.numPressureGoalsByTime].pressure = pressureVal;
+        shot.numPressureGoalsByTime++;
+      }
     }
   }
   req->send(200, "text/plain", "OK");
