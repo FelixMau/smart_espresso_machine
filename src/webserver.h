@@ -9,10 +9,8 @@
 #include "AsyncTCP.h"
 #include "ESPAsyncWebServer.h"
 #include <secrets.h>
-#include <EEPROM.h>
-#include "shot_stopper.h"
 
-extern struct Shot shot; // Defined in shot_stopper.h
+extern struct Shot shot; // Include the Shot structure from shot_stopper.h
 
 // Server auf Port 80
 AsyncWebServer server(80);
@@ -59,12 +57,8 @@ const char index_html[] PROGMEM = R"rawliteral(
   <p>Pressure: <span id="pressure">%PRESSURE%</span> bar</p>
   <p>Time: <span id="shottime">%SHOTTIME%</span> s</p>
     <p>Expected End: <span id="expected_end">%EXPECTED_END%</span> s</p>
-  <p>Goal Weight: <span id="goal_weight">%GOAL_WEIGHT%</span> g</p>
-  <p>Weight Offset: <span id="weight_offset">%WEIGHT_OFFSET%</span> g</p>
-  <div style="margin-top:20px;">
-    <input type="number" step="0.1" id="new_goal" placeholder="New goal">
-    <button onclick="setGoalWeight()">Set Goal</button>
-  </div>
+    <p>Goal Weight: <span id="goal_weight">%GOAL_WEIGHT%</span> g</p>
+    <p>Weight Offset: <span id="weight_offset">%WEIGHT_OFFSET%</span> g</p>
 <script>
   setInterval(()=>fetch('/weight').then(r=>r.text()).then(v=>document.getElementById('weight').textContent=v), 1000);
   setInterval(()=>fetch('/pressure').then(r=>r.text()).then(v=>document.getElementById('pressure').textContent=v), 1000);
@@ -72,17 +66,6 @@ const char index_html[] PROGMEM = R"rawliteral(
     setInterval(()=>fetch('/expected_end').then(r=>r.text()).then(v=>document.getElementById('expected_end').textContent=v), 1000);
     setInterval(()=>fetch('/goal_weight').then(r=>r.text()).then(v=>document.getElementById('goal_weight').textContent=v), 1000);
     setInterval(()=>fetch('/weight_offset').then(r=>r.text()).then(v=>document.getElementById('weight_offset').textContent=v), 1000);
-
-  function setGoalWeight(){
-    const val = document.getElementById('new_goal').value;
-    fetch('/set_goal_weight', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-      body: 'value=' + encodeURIComponent(val)
-    }).then(()=>{
-      document.getElementById('goal_weight').textContent = val;
-    });
-  }
 </script>
 </body></html>
 )rawliteral";
@@ -136,18 +119,6 @@ server.on("/goal_weight", HTTP_GET, [](AsyncWebServerRequest *req){
 });
 server.on("/weight_offset", HTTP_GET, [](AsyncWebServerRequest *req){
   req->send(200, "text/plain", readShotWeightOffset());
-});
-
-server.on("/set_goal_weight", HTTP_POST, [](AsyncWebServerRequest *req){
-  if(req->hasParam("value", true)){
-    float val = req->getParam("value", true)->value().toFloat();
-    shot.goalWeight = val;
-    EEPROM.write(WEIGHT_ADDR, (uint8_t)val);
-    EEPROM.commit();
-    req->send(200, "text/plain", "ok");
-  } else {
-    req->send(400, "text/plain", "missing value");
-  }
 });
 
   // Server starten
