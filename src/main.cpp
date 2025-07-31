@@ -30,7 +30,7 @@ void setup() {
   Serial.print("Goal Weight retrieved: ");
   Serial.println(read_goalWeight);
   Serial.print("offset retrieved: ");
-  Serial.println(read_goalWeight);
+  Serial.println(read_weightOffset);
 
   // If EEPROM isn't initialized and has an unreasonable weight/offset, default to 36g/1.5g
   if ((read_goalWeight < 10) || (read_goalWeight > 200)) {
@@ -63,7 +63,8 @@ void setup() {
   // Instead, just set the dimmer pin LOW (off) initially
   digitalWrite(DIMMER_PIN, HIGH);
   shot.goalWeight = read_goalWeight;
-  
+  shot.weightOffset = read_weightOffset;
+
   startwifi(); // Start WiFi connection
 }
 
