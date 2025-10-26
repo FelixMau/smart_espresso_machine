@@ -1,6 +1,7 @@
 #include <Arduino.h>
-#include "rbdimmerESP32.h"
+#include <Encoder.h>
 
+Encoder myEnc(32, 35);  // Connect encoder to pins 2 and 3
 
 const int dimmerPin = 5;      // Choose your GPIO pin
 const int freq = 50;         // PWM frequency, usually 1kHz-5kHz for basic use
@@ -14,15 +15,8 @@ void setup() {
 }
 
 void loop() {
-  for(int dutyCycle = 100; dutyCycle <= 255; dutyCycle++) {
-    ledcWrite(pwmChannel, dutyCycle);
-    delay(10);
-    Serial.println(dutyCycle);
-    
-  }
-  for(int dutyCycle = 255; dutyCycle >= 100; dutyCycle--) {
-    ledcWrite(pwmChannel, dutyCycle);
-    delay(10);
-    Serial.println(dutyCycle);
-  }
+  long newPosition = myEnc.read();
+  // Map position to 0-255
+  int pwmValue = constrain(newPosition, 0, 255);
+  ledcWrite(pwmChannel, pwmValue);
 }
