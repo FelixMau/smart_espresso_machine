@@ -10,15 +10,19 @@ const int resolution = 8;      // 8-bit resolution (0 to 255)
 void setup() {
   ledcSetup(pwmChannel, freq, resolution);
   ledcAttachPin(dimmerPin, pwmChannel);
+  Serial.begin(9600);
 }
 
 void loop() {
   for(int dutyCycle = 100; dutyCycle <= 255; dutyCycle++) {
     ledcWrite(pwmChannel, dutyCycle);
     delay(10);
+    Serial.println(dutyCycle);
+    
   }
   for(int dutyCycle = 255; dutyCycle >= 100; dutyCycle--) {
     ledcWrite(pwmChannel, dutyCycle);
     delay(10);
+    Serial.println(dutyCycle);
   }
 }
