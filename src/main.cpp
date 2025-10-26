@@ -3,9 +3,9 @@
 
 ESP32Encoder encoder;
 
-const int encoderPinA = 32;    // Set your pins here
-const int encoderPinB = 35;
-const int dimmerPin = 5;       // PWM output
+const int encoderPinA = 32;    // Encoder pin A
+const int encoderPinB = 35;    // Encoder pin B
+const int dimmerPin = 5;       // PWM output pin
 const int freq = 50;           // PWM frequency (Hz)
 const int pwmChannel = 0;      // PWM channel
 const int resolution = 8;      // 8-bit resolution (0 to 255)
@@ -13,7 +13,7 @@ const int resolution = 8;      // 8-bit resolution (0 to 255)
 void setup() {
   Serial.begin(9600);
 
-  ESP32Encoder::useInternalWeakPullResistors = UP;
+  //ESP32Encoder::useInternalWeakPullResistors = up;
   encoder.attachHalfQuad(encoderPinA, encoderPinB);
   encoder.setCount(0);
 
@@ -33,5 +33,5 @@ void loop() {
   Serial.print("PWM Value: ");
   Serial.println(pwmValue);
 
-  delay(100); // Optional, damit die serielle Ausgabe stabil bleibt
+  delay(100); // For readable output
 }
