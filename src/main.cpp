@@ -4,7 +4,7 @@
 #define ZERO_CROSS_PIN 4  ///< GPIO pin connected to zero-cross detector output
 #define DIMMER_PIN 5      ///< GPIO pin connected to dimmer control input
 #define PHASE_NUM 0        ///< Phase number (0 for single-phase systems)
-#define INITIAL_BRIGHTNESS 95  ///< Initial brightness level in percent (0-100)
+#define INITIAL_BRIGHTNESS 100  ///< Initial brightness level in percent (0-100)
 #define MAINS_FREQUENCY 0      ///< Mains frequency: 0=auto-detect, 50=50Hz, 60=60Hz
 rbdimmer_channel_t* dimmer = NULL;
 
