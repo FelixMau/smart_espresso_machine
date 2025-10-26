@@ -17,6 +17,11 @@ void setup() {
 void loop() {
   long newPosition = myEnc.read();
   // Map position to 0-255
+  Serial.print("Encoder Position: ");
+  Serial.println(newPosition);
+
   int pwmValue = constrain(newPosition, 0, 255);
   ledcWrite(pwmChannel, pwmValue);
+  Serial.print("PWM Value: ");
+  Serial.println(pwmValue);
 }
