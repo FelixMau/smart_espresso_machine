@@ -3,14 +3,14 @@ This is a more or less private project where I work on my Espresso machine to di
 #### Planned features
 Planed features include:
 - [x] Connect the scale to the microcontroller
-- [] Microcontroller can read the *shotbutton* from the machine
-- [] Microcontroller is able to also 'press' the *shotbutton*
-- [] Design a PCB to hold the sensors
-- [] Microcontroller is able to adjust pump power via a Dimmer
+- [ ] Microcontroller can read the *shotbutton* from the machine
+- [ ] Microcontroller is able to also 'press' the *shotbutton*
+- [ ] Design a PCB to hold the sensors
+- [ ] Microcontroller is able to adjust pump power via a Dimmer
 - [x] Mechanical button/knob to *manually* adjust Pump power during shots
-- [] Add pressure sensor
-- [] Pressure seonsor readings are shown on a simple display.
-- [] Design cases for PCB, display, knob
+- [ ] Add pressure sensor
+- [ ] Pressure seonsor readings are shown on a simple display.
+- [ ] Design cases for PCB, display, knob
 
 #### Working details of Features
 - Connection of Scale to Microcontroller
