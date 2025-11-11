@@ -698,11 +698,11 @@
 	(footprint "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 		(layer "F.Cu")
 		(uuid "062ffa5e-6a49-4e4b-942c-5609d1882375")
-		(at 263.548 100.247 180)
+		(at 256.54 96.52 180)
 		(descr "Resistor, Axial_DIN0207 series, Axial, Horizontal, pin pitch=10.16mm, 0.25W = 1/4W, length*diameter=6.3*2.5mm^2, http://cdn-reichelt.de/documents/datenblatt/B400/1_4W%23YAG.pdf")
 		(tags "Resistor Axial_DIN0207 series Axial Horizontal pin pitch 10.16mm 0.25W = 1/4W length 6.3mm diameter 2.5mm")
 		(property "Reference" "R_GND2"
-			(at 5.08 -2.37 360)
+			(at 5.08 -2.37 0)
 			(layer "F.SilkS")
 			(hide yes)
 			(uuid "ebe3de65-321b-4151-9964-16d0cabc99e1")
@@ -714,7 +714,7 @@
 			)
 		)
 		(property "Value" "22k"
-			(at 5.4 0 360)
+			(at 5.4 0 0)
 			(layer "F.Fab")
 			(uuid "ed7a7cfc-37f1-461a-9be1-af355bb74d6e")
 			(effects
@@ -967,7 +967,7 @@
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "GPIO36"
-			(at -6.1 0.1 360)
+			(at -6.1 0.1 0)
 			(layer "F.SilkS")
 			(uuid "ac9aa87b-3ed6-423c-b125-c0e0ae310e58")
 			(effects
@@ -978,7 +978,7 @@
 			)
 		)
 		(property "Value" "Conn_01x01_Socket"
-			(at 0 2.33 360)
+			(at 0 2.33 0)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "796275ae-4406-4ea0-bf3f-e4b9fa2663b0")
@@ -1455,7 +1455,7 @@
 	(footprint "MountingHole:MountingHole_2.2mm_M2"
 		(layer "F.Cu")
 		(uuid "164cef92-e3e9-4d23-878a-01744f0f7822")
-		(at 267.97 80.01)
+		(at 266.065 78.74)
 		(descr "Mounting Hole 2.2mm, no annular, M2")
 		(tags "mounting hole 2.2mm no annular m2")
 		(property "Reference" "REF**"
@@ -1812,7 +1812,7 @@
 	(footprint "MountingHole:MountingHole_2.2mm_M2"
 		(layer "F.Cu")
 		(uuid "1d278289-a739-4075-a79c-0d0c727e2cb9")
-		(at 268.605 159.385)
+		(at 266.065 159.385)
 		(descr "Mounting Hole 2.2mm, no annular, M2")
 		(tags "mounting hole 2.2mm no annular m2")
 		(property "Reference" "REF**"
@@ -1901,7 +1901,7 @@
 	(footprint "Connector_JST:JST_EH_B2B-EH-A_1x02_P2.50mm_Vertical"
 		(layer "F.Cu")
 		(uuid "2a988a05-ed78-4cbc-8dbc-72637f7d73d4")
-		(at 229.87 107.95 90)
+		(at 225.725 107.93 90)
 		(descr "JST EH series connector, B2B-EH-A (http://www.jst-mfg.com/product/pdf/eng/eEH.pdf), generated with kicad-footprint-generator")
 		(tags "connector JST EH vertical")
 		(property "Reference" "JSChalter1"
@@ -1918,6 +1918,7 @@
 		(property "Value" "Conn_01x02_Socket"
 			(at 1.25 3.4 90)
 			(layer "F.Fab")
+			(hide yes)
 			(uuid "9abc4718-3834-43b1-8434-e44198d34253")
 			(effects
 				(font
@@ -2490,7 +2491,7 @@
 			(uuid "3b198dfc-08e2-4ec6-926c-d91a6060a340")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 0 360)
+			(at 0 0 0)
 			(layer "F.Fab")
 			(uuid "f224dab9-b23b-4c9e-b91e-b4a2ff8ea5f5")
 			(effects
@@ -2530,7 +2531,7 @@
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "GPIO12"
-			(at -6.1 0.1 90)
+			(at -4.681 0.23 90)
 			(layer "F.SilkS")
 			(uuid "33adfdde-3065-4546-95c2-72f88e1d3705")
 			(effects
@@ -3762,7 +3763,7 @@
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "GPIO34"
-			(at -6.1 0.1 360)
+			(at -6.1 0.1 0)
 			(layer "F.SilkS")
 			(uuid "d64ece2d-885d-473a-99d3-7d67440ac43d")
 			(effects
@@ -3773,7 +3774,7 @@
 			)
 		)
 		(property "Value" "Conn_01x01_Socket"
-			(at 0 2.33 360)
+			(at 0 2.33 0)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "6929581a-208c-4e82-b880-36dc6b79b44a")
@@ -4266,7 +4267,7 @@
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "GPIO35"
-			(at -6.1 0.1 360)
+			(at -6.1 0.1 0)
 			(layer "F.SilkS")
 			(uuid "6bd484cc-3e25-4fad-b2d7-13b57b3440de")
 			(effects
@@ -4277,7 +4278,7 @@
 			)
 		)
 		(property "Value" "Conn_01x01_Socket"
-			(at 0 2.33 360)
+			(at 0 2.33 0)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "55e34566-2496-4371-abc0-62c1865e1583")
@@ -4619,7 +4620,7 @@
 	(footprint "Connector_JST:JST_EH_B2B-EH-A_1x02_P2.50mm_Vertical"
 		(layer "F.Cu")
 		(uuid "7136b48c-2c73-464b-8c3e-3b42fd19178e")
-		(at 243.84 107.95 90)
+		(at 239.695 107.93 90)
 		(descr "JST EH series connector, B2B-EH-A (http://www.jst-mfg.com/product/pdf/eng/eEH.pdf), generated with kicad-footprint-generator")
 		(tags "connector JST EH vertical")
 		(property "Reference" "Licht2"
@@ -4636,6 +4637,7 @@
 		(property "Value" "Conn_01x02_Socket"
 			(at 1.25 3.4 90)
 			(layer "F.Fab")
+			(hide yes)
 			(uuid "aecf2d4b-914f-4917-badd-9730388d617e")
 			(effects
 				(font
@@ -5237,7 +5239,7 @@
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "GND1"
-			(at -6.1 0.1 90)
+			(at -4.681 0.23 90)
 			(layer "F.SilkS")
 			(uuid "ffb94d9b-edd9-457e-ada4-a4d83f122475")
 			(effects
@@ -5986,7 +5988,7 @@
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "GPIO26"
-			(at -6.1 0.1 90)
+			(at -4.681 0.23 90)
 			(layer "F.SilkS")
 			(uuid "532de073-4b31-4801-921b-e2e85c00d8a3")
 			(effects
@@ -6474,7 +6476,7 @@
 	(footprint "Connector_PinHeader_2.54mm:PinHeader_1x01_P2.54mm_Vertical"
 		(layer "F.Cu")
 		(uuid "894d47f0-d8ee-402d-b4d5-c9bd0910f110")
-		(at 223.355 86.275 -90)
+		(at 200.66 85.852 -90)
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "D+1"
@@ -6977,11 +6979,11 @@
 	(footprint "Connector_IDC:IDC-Header_2x05_P2.54mm_Vertical"
 		(layer "F.Cu")
 		(uuid "92dd4a61-154f-4319-bc2e-4775a3f91e0c")
-		(at 230.505 85.09)
+		(at 226.06 85.09)
 		(descr "Through hole IDC box header, 2x05, 2.54mm pitch, DIN 41651 / IEC 60603-13, double rows, https://docs.google.com/spreadsheets/d/16SsEcesNF15N3Lb4niX7dcUr-NY5_MFPQhobNuNppn4/edit#gid=0")
 		(tags "Through hole vertical IDC box header THT 2x05 2.54mm double row")
 		(property "Reference" "ToButtons1"
-			(at 1.27 -6.1 360)
+			(at 1.27 -6.1 0)
 			(layer "F.SilkS")
 			(uuid "54bf9791-380b-45c5-b273-4670194faebd")
 			(effects
@@ -6992,7 +6994,7 @@
 			)
 		)
 		(property "Value" "Conn_01x10_Socket"
-			(at 1.27 16.26 360)
+			(at 1.27 16.26 0)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "c27b09dd-e341-4f1b-bfff-ecb82f3df1b5")
@@ -7593,7 +7595,7 @@
 	(footprint "Connector_JST:JST_EH_B2B-EH-A_1x02_P2.50mm_Vertical"
 		(layer "F.Cu")
 		(uuid "9a95dc68-fc50-4971-9a50-800aaf308642")
-		(at 236.555 107.97 90)
+		(at 232.41 107.95 90)
 		(descr "JST EH series connector, B2B-EH-A (http://www.jst-mfg.com/product/pdf/eng/eEH.pdf), generated with kicad-footprint-generator")
 		(tags "connector JST EH vertical")
 		(property "Reference" "Licht1"
@@ -7610,6 +7612,7 @@
 		(property "Value" "Conn_01x02_Socket"
 			(at 1.25 3.4 90)
 			(layer "F.Fab")
+			(hide yes)
 			(uuid "95914662-ef78-4cdc-95de-7d2ca7e90817")
 			(effects
 				(font
@@ -7961,7 +7964,7 @@
 	(footprint "myLib:HCPL-817"
 		(layer "F.Cu")
 		(uuid "9d671282-9362-4686-a4ac-1eb3f2238dca")
-		(at 258.275 94.725 -90)
+		(at 251.29 91.55 -90)
 		(property "Reference" "Detect1"
 			(at 0.41 -1.17 -90)
 			(unlocked yes)
@@ -8212,7 +8215,7 @@
 			)
 			(polygon
 				(pts
-					(xy 261.945 92.135) (xy 261.945 97.135) (xy 254.945 97.135) (xy 254.945 92.135)
+					(xy 254.96 88.96) (xy 254.96 93.96) (xy 247.96 93.96) (xy 247.96 88.96)
 				)
 			)
 		)
@@ -8687,7 +8690,7 @@
 			(uuid "0db5a0f1-3ebb-49d1-b86b-536a12b2c984")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 0 360)
+			(at 0 0 0)
 			(layer "F.Fab")
 			(uuid "1c0be012-6ebc-4cfc-80a9-fe3b8e31af1b")
 			(effects
@@ -8709,6 +8712,465 @@
 			(uuid "2d73dae3-ec4b-4412-8e24-c9f0670b75b7")
 		)
 		(model "${KICAD8_3DMODEL_DIR}/Connector_PinHeader_2.54mm.3dshapes/PinHeader_1x01_P2.54mm_Vertical.wrl"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 1 1 1)
+			)
+			(rotate
+				(xyz 0 0 0)
+			)
+		)
+	)
+	(footprint "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical"
+		(layer "F.Cu")
+		(uuid "a81ff327-7139-4265-820c-80edad4df0e4")
+		(at 255.23 115.46 180)
+		(descr "JST XH series connector, B3B-XH-A (http://www.jst-mfg.com/product/pdf/eng/eXH.pdf), generated with kicad-footprint-generator")
+		(tags "connector JST XH vertical")
+		(property "Reference" "J2"
+			(at 2.5 -3.55 360)
+			(layer "F.SilkS")
+			(hide yes)
+			(uuid "1cafb597-7c4e-4953-b199-2859b69b06ea")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Value" "Encoder"
+			(at 2.5 4.6 360)
+			(layer "F.Fab")
+			(uuid "ba46d2ac-9519-4c06-97cd-02797b226453")
+			(effects
+				(font
+					(size 1 1)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Footprint" "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical"
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "66647358-4a9f-4722-87ad-3ebfa381e956")
+			(effects
+				(font
+					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "33685fac-9650-477a-84ea-c52d1a91b470")
+			(effects
+				(font
+					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property "Description" "Generic connector, single row, 01x03, script generated"
+			(at 0 0 180)
+			(unlocked yes)
+			(layer "F.Fab")
+			(hide yes)
+			(uuid "77b70ca5-4085-4974-9da6-f7935ebb1cd9")
+			(effects
+				(font
+					(size 1.27 1.27)
+					(thickness 0.15)
+				)
+			)
+		)
+		(property ki_fp_filters "Connector*:*_1x??_*")
+		(path "/0cb28718-760d-4c74-92cb-df908f7f9ec0")
+		(sheetname "Root")
+		(sheetfile "DC_minni.kicad_sch")
+		(attr through_hole)
+		(fp_line
+			(start 7.56 3.51)
+			(end 7.56 -2.46)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "d8cbc354-b119-4eb1-b839-97b25a068faa")
+		)
+		(fp_line
+			(start 7.56 -2.46)
+			(end -2.56 -2.46)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "b0801ec1-5b02-4124-a5bd-bfe609a61c88")
+		)
+		(fp_line
+			(start 7.55 -0.2)
+			(end 6.8 -0.2)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "0a017bac-574b-4aa5-84fa-303356e7eb72")
+		)
+		(fp_line
+			(start 7.55 -1.7)
+			(end 7.55 -2.45)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "a7a4570c-d4d3-4df1-acf4-ac896221710d")
+		)
+		(fp_line
+			(start 7.55 -2.45)
+			(end 5.75 -2.45)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "527a1bc2-281e-478e-93f7-87e3354b065b")
+		)
+		(fp_line
+			(start 6.8 2.75)
+			(end 2.5 2.75)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "65d4c3ee-6ba2-4ca2-9920-a3694360f326")
+		)
+		(fp_line
+			(start 6.8 -0.2)
+			(end 6.8 2.75)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "956a5259-11b6-49c5-869d-725b09edfc4b")
+		)
+		(fp_line
+			(start 5.75 -1.7)
+			(end 7.55 -1.7)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "e6e7d5de-f3a2-4084-aceb-10741aac1f1e")
+		)
+		(fp_line
+			(start 5.75 -2.45)
+			(end 5.75 -1.7)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "6fd31639-81ea-472c-907b-5e74b210acfc")
+		)
+		(fp_line
+			(start 4.25 -1.7)
+			(end 4.25 -2.45)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "53511b1b-f98d-4fc4-8a3c-8e3a0453b0ca")
+		)
+		(fp_line
+			(start 4.25 -2.45)
+			(end 0.75 -2.45)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "690785d3-9fbc-4726-957b-7f5868b546ed")
+		)
+		(fp_line
+			(start 0.75 -1.7)
+			(end 4.25 -1.7)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "833f8eab-8280-483e-b4fc-decee4a83696")
+		)
+		(fp_line
+			(start 0.75 -2.45)
+			(end 0.75 -1.7)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "aef01d12-d5cc-4478-bb81-be903b12ec2a")
+		)
+		(fp_line
+			(start -0.75 -1.7)
+			(end -0.75 -2.45)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "483184f9-d1b4-483f-bec8-aa66f46b3d6f")
+		)
+		(fp_line
+			(start -0.75 -2.45)
+			(end -2.55 -2.45)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "cb291e8f-37ec-4ef1-973f-2f77da8c9feb")
+		)
+		(fp_line
+			(start -1.6 -2.75)
+			(end -2.85 -2.75)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "7dea1a58-87a8-4c23-91ed-298478fcad5e")
+		)
+		(fp_line
+			(start -1.8 2.75)
+			(end 2.5 2.75)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "22f09e86-fb9e-4acb-b1cf-056e1bda0c3f")
+		)
+		(fp_line
+			(start -1.8 -0.2)
+			(end -1.8 2.75)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "e2777ea4-75b6-4573-97fb-e4a07f257da2")
+		)
+		(fp_line
+			(start -2.55 -0.2)
+			(end -1.8 -0.2)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "34a18238-a647-4c0d-9f26-31beb44d6111")
+		)
+		(fp_line
+			(start -2.55 -1.7)
+			(end -0.75 -1.7)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "24faf45e-4361-4863-ae1a-e67b3f20f65d")
+		)
+		(fp_line
+			(start -2.55 -2.45)
+			(end -2.55 -1.7)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "3524f97e-df7b-4a00-bd4c-e83238e7acf0")
+		)
+		(fp_line
+			(start -2.56 3.51)
+			(end 7.56 3.51)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "fe65eabd-7170-45ff-b69f-f602ae72474e")
+		)
+		(fp_line
+			(start -2.56 -2.46)
+			(end -2.56 3.51)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "da1e6732-20c5-469c-9632-4672088030ed")
+		)
+		(fp_line
+			(start -2.85 -2.75)
+			(end -2.85 -1.5)
+			(stroke
+				(width 0.12)
+				(type solid)
+			)
+			(layer "F.SilkS")
+			(uuid "bb40c995-8714-41fc-8322-3b20957a76b9")
+		)
+		(fp_line
+			(start 7.95 3.9)
+			(end 7.95 -2.85)
+			(stroke
+				(width 0.05)
+				(type solid)
+			)
+			(layer "F.CrtYd")
+			(uuid "78f18502-bc96-4321-9661-8fbfc68010f8")
+		)
+		(fp_line
+			(start 7.95 -2.85)
+			(end -2.95 -2.85)
+			(stroke
+				(width 0.05)
+				(type solid)
+			)
+			(layer "F.CrtYd")
+			(uuid "d40a766c-b77b-453f-8832-5c15de315fc8")
+		)
+		(fp_line
+			(start -2.95 3.9)
+			(end 7.95 3.9)
+			(stroke
+				(width 0.05)
+				(type solid)
+			)
+			(layer "F.CrtYd")
+			(uuid "186c176d-1292-43f2-90b7-72d386d5f2b0")
+		)
+		(fp_line
+			(start -2.95 -2.85)
+			(end -2.95 3.9)
+			(stroke
+				(width 0.05)
+				(type solid)
+			)
+			(layer "F.CrtYd")
+			(uuid "9e66e53c-dda2-4c18-8626-2ce8cc6fbdb8")
+		)
+		(fp_line
+			(start 7.45 3.4)
+			(end 7.45 -2.35)
+			(stroke
+				(width 0.1)
+				(type solid)
+			)
+			(layer "F.Fab")
+			(uuid "faa7b042-df03-45bc-8958-6be798c04e5c")
+		)
+		(fp_line
+			(start 7.45 -2.35)
+			(end -2.45 -2.35)
+			(stroke
+				(width 0.1)
+				(type solid)
+			)
+			(layer "F.Fab")
+			(uuid "c10d5f83-d1c8-4c9a-8410-8d3413b31901")
+		)
+		(fp_line
+			(start 0 -1.35)
+			(end 0.625 -2.35)
+			(stroke
+				(width 0.1)
+				(type solid)
+			)
+			(layer "F.Fab")
+			(uuid "d44ec3a6-7064-4f9e-a942-52ae27c5933f")
+		)
+		(fp_line
+			(start -0.625 -2.35)
+			(end 0 -1.35)
+			(stroke
+				(width 0.1)
+				(type solid)
+			)
+			(layer "F.Fab")
+			(uuid "6abe1ecf-de9e-4a73-b515-74e03930872c")
+		)
+		(fp_line
+			(start -2.45 3.4)
+			(end 7.45 3.4)
+			(stroke
+				(width 0.1)
+				(type solid)
+			)
+			(layer "F.Fab")
+			(uuid "3393fb70-ddd3-41be-9cb1-00c247d3aa0a")
+		)
+		(fp_line
+			(start -2.45 -2.35)
+			(end -2.45 3.4)
+			(stroke
+				(width 0.1)
+				(type solid)
+			)
+			(layer "F.Fab")
+			(uuid "6e061571-645c-4dab-82b3-9339e066879f")
+		)
+		(pad "1" thru_hole roundrect
+			(at 0 0 180)
+			(size 1.7 1.95)
+			(drill 0.95)
+			(layers "*.Cu" "*.Mask")
+			(remove_unused_layers no)
+			(roundrect_rratio 0.147059)
+			(net 6 "GND")
+			(pinfunction "Pin_1")
+			(pintype "passive")
+			(uuid "840e5b9e-d198-4d3c-8aff-a4da3c5805bc")
+		)
+		(pad "2" thru_hole oval
+			(at 2.5 0 180)
+			(size 1.7 1.95)
+			(drill 0.95)
+			(layers "*.Cu" "*.Mask")
+			(remove_unused_layers no)
+			(net 38 "Net-(GPIO23-Pin_1)")
+			(pinfunction "Pin_2")
+			(pintype "passive")
+			(uuid "5e18aa67-c58e-480b-8b6e-e0cb85c3c611")
+		)
+		(pad "3" thru_hole oval
+			(at 5 0 180)
+			(size 1.7 1.95)
+			(drill 0.95)
+			(layers "*.Cu" "*.Mask")
+			(remove_unused_layers no)
+			(net 39 "Net-(GPIO25-Pin_1)")
+			(pinfunction "Pin_3")
+			(pintype "passive")
+			(uuid "54ef4b59-9ef2-43bd-ad1c-e8fb75c8af01")
+		)
+		(model "${KICAD8_3DMODEL_DIR}/Connector_JST.3dshapes/JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical.wrl"
 			(offset
 				(xyz 0 0 0)
 			)
@@ -8973,7 +9435,7 @@
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "GPIO33"
-			(at -6.1 0.1 90)
+			(at -4.681 -0.215 90)
 			(layer "F.SilkS")
 			(uuid "21cbb2c5-12d2-4074-8143-77b5799e9c0f")
 			(effects
@@ -9219,7 +9681,7 @@
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "GPIO39"
-			(at -6.1 0.1 360)
+			(at -6.1 0.1 0)
 			(layer "F.SilkS")
 			(uuid "3e86244a-e991-4d0e-9569-7ffb6ef8891e")
 			(effects
@@ -9230,7 +9692,7 @@
 			)
 		)
 		(property "Value" "Conn_01x01_Socket"
-			(at 0 2.33 360)
+			(at 0 2.33 0)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "90b00a33-1153-478a-80a9-3248ec930279")
@@ -9461,7 +9923,7 @@
 	(footprint "myLib:HCPL-817"
 		(layer "F.Cu")
 		(uuid "b8facfcd-8c22-47d2-989a-eaa9e9b814e3")
-		(at 258.615 84.345 90)
+		(at 251.46 85.09 90)
 		(property "Reference" "Press1"
 			(at 0.41 -1.17 90)
 			(unlocked yes)
@@ -9712,7 +10174,7 @@
 			)
 			(polygon
 				(pts
-					(xy 254.945 86.935) (xy 254.945 81.935) (xy 261.945 81.935) (xy 261.945 86.935)
+					(xy 247.79 87.68) (xy 247.79 82.68) (xy 254.79 82.68) (xy 254.79 87.68)
 				)
 			)
 		)
@@ -9736,7 +10198,7 @@
 			)
 		)
 		(property "Value" "ESP32-DevKitC"
-			(at 12.7 24.13 360)
+			(at 12.7 24.13 0)
 			(layer "F.SilkS")
 			(uuid "54e15600-33d3-4ab7-886e-3b4ab69d45a9")
 			(effects
@@ -11076,11 +11538,11 @@
 	(footprint "Connector_IDC:IDC-Header_2x05_P2.54mm_Vertical"
 		(layer "F.Cu")
 		(uuid "bf3bf910-57a5-4161-b77e-053129065311")
-		(at 243.205 85.09)
+		(at 237.49 85.09)
 		(descr "Through hole IDC box header, 2x05, 2.54mm pitch, DIN 41651 / IEC 60603-13, double rows, https://docs.google.com/spreadsheets/d/16SsEcesNF15N3Lb4niX7dcUr-NY5_MFPQhobNuNppn4/edit#gid=0")
 		(tags "Through hole vertical IDC box header THT 2x05 2.54mm double row")
 		(property "Reference" "FromMachine1"
-			(at 1.27 -6.1 360)
+			(at 1.27 -6.1 0)
 			(layer "F.SilkS")
 			(uuid "6ed8ff00-d7c8-4449-98dc-5ee0228818c8")
 			(effects
@@ -11091,7 +11553,7 @@
 			)
 		)
 		(property "Value" "Conn_01x10_Socket"
-			(at 1.27 16.26 360)
+			(at 1.27 16.26 0)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "a05e93d1-77b8-4d9e-8c97-60aef43e6115")
@@ -11603,11 +12065,11 @@
 	(footprint "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 		(layer "F.Cu")
 		(uuid "bf877421-daa2-4ed6-9d2e-f212cb2087bb")
-		(at 263.06 78.63 180)
+		(at 256.54 80.01 180)
 		(descr "Resistor, Axial_DIN0207 series, Axial, Horizontal, pin pitch=10.16mm, 0.25W = 1/4W, length*diameter=6.3*2.5mm^2, http://cdn-reichelt.de/documents/datenblatt/B400/1_4W%23YAG.pdf")
 		(tags "Resistor Axial_DIN0207 series Axial Horizontal pin pitch 10.16mm 0.25W = 1/4W length 6.3mm diameter 2.5mm")
 		(property "Reference" "R_GND1"
-			(at 5.08 -2.37 360)
+			(at 5.08 -2.37 0)
 			(layer "F.SilkS")
 			(hide yes)
 			(uuid "d66a4126-add1-4e7e-af14-58701dfa7315")
@@ -11619,7 +12081,7 @@
 			)
 		)
 		(property "Value" "22k"
-			(at 5.08 0 360)
+			(at 5.08 0 0)
 			(layer "F.Fab")
 			(uuid "e13d82b5-68e9-476f-9ebe-92687afb37c2")
 			(effects
@@ -12118,7 +12580,7 @@
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "GPIO27"
-			(at -6.1 0.1 90)
+			(at -4.681 0.23 90)
 			(layer "F.SilkS")
 			(uuid "eed45f2d-a8e3-4e28-993c-2c683f559f95")
 			(effects
@@ -12364,7 +12826,7 @@
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "GPIO25"
-			(at -6.1 0.1 90)
+			(at -4.681 0.23 90)
 			(layer "F.SilkS")
 			(uuid "16c0b2c6-a548-4af6-a5ab-28def6a712a9")
 			(effects
@@ -12827,7 +13289,7 @@
 			(uuid "0adaf459-db81-49f1-8310-6cda066c2cf3")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 0 360)
+			(at 0 0 0)
 			(layer "F.Fab")
 			(uuid "6728cfe9-cd80-4f55-a318-e4d2f95db33d")
 			(effects
@@ -13113,7 +13575,7 @@
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "GPIO32"
-			(at -6.1 0.1 360)
+			(at -6.1 0.1 0)
 			(layer "F.SilkS")
 			(uuid "27217584-5fae-4870-b306-981e18a4c885")
 			(effects
@@ -13124,7 +13586,7 @@
 			)
 		)
 		(property "Value" "Conn_01x01_Socket"
-			(at 0 2.33 360)
+			(at 0 2.33 0)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "17469c5a-0f63-4217-988c-24b7af6fd206")
@@ -15313,7 +15775,7 @@
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "GPIO13"
-			(at -6.1 0.1 90)
+			(at -4.681 0.23 90)
 			(layer "F.SilkS")
 			(uuid "8104289b-fe47-42b5-8514-473ed9a0deb8")
 			(effects
@@ -15559,7 +16021,7 @@
 		(descr "Through hole straight pin header, 1x01, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x01 2.54mm single row")
 		(property "Reference" "GPIO14"
-			(at -6.1 0.1 90)
+			(at -4.681 0.23 90)
 			(layer "F.SilkS")
 			(uuid "66d1930f-06f8-4a4d-a852-0ffdac885e3f")
 			(effects
@@ -15801,11 +16263,11 @@
 	(footprint "Connector_JST:JST_XH_B4B-XH-A_1x04_P2.50mm_Vertical"
 		(layer "F.Cu")
 		(uuid "f6682af7-8dcf-4bbb-b6ad-50d3af445cad")
-		(at 262.89 107.95 180)
+		(at 255.19 105.41 180)
 		(descr "JST XH series connector, B4B-XH-A (http://www.jst-mfg.com/product/pdf/eng/eXH.pdf), generated with kicad-footprint-generator")
 		(tags "connector JST XH vertical")
 		(property "Reference" "DIMMER1"
-			(at 3.75 -3.55 360)
+			(at 3.75 -3.55 0)
 			(layer "F.SilkS")
 			(uuid "c89bdce2-46b3-4279-87c7-ef4ed953dadf")
 			(effects
@@ -15816,7 +16278,7 @@
 			)
 		)
 		(property "Value" "Conn_01x04_Socket"
-			(at 3.75 4.6 360)
+			(at 3.75 4.6 0)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "cca7d36f-95f6-4ddc-b51c-0e11cc3373fc")
@@ -16516,7 +16978,7 @@
 	)
 	(gr_line
 		(start 197.625 162.56)
-		(end 272.65 162.56)
+		(end 269.875 162.575)
 		(stroke
 			(width 0.0381)
 			(type default)
@@ -16535,7 +16997,7 @@
 		(uuid "3f73008e-a568-41c4-962f-c3832bbe95ea")
 	)
 	(gr_line
-		(start 272.65 74.9)
+		(start 269.875 74.915)
 		(end 197.625 74.9)
 		(stroke
 			(width 0.0381)
@@ -16545,8 +17007,8 @@
 		(uuid "8710a616-3aa1-4206-a5ae-55e82a09a89c")
 	)
 	(gr_line
-		(start 272.65 162.56)
-		(end 272.65 74.9)
+		(start 269.875 162.575)
+		(end 269.875 74.915)
 		(stroke
 			(width 0.0381)
 			(type default)
@@ -16593,7 +17055,7 @@
 		)
 	)
 	(gr_text "ShotControl"
-		(at 241.3 117.475 0)
+		(at 201.705 110.2 0)
 		(layer "F.SilkS")
 		(uuid "403978fd-9b7e-46b0-ba58-4287eccb7851")
 		(effects
@@ -16745,7 +17207,7 @@
 		)
 	)
 	(gr_text "30.10.2025 -v2.0\n"
-		(at 244.7 121.575 0)
+		(at 205.105 112.395 0)
 		(layer "F.SilkS")
 		(uuid "e3d9fea8-e8da-492a-a9f4-9951ef700467")
 		(effects
