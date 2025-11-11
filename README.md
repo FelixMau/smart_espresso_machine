@@ -5,7 +5,7 @@ Planed features include:
 - [x] Connect the scale to the microcontroller
 - [ ] Microcontroller can read the *shotbutton* from the machine
 - [ ] Microcontroller is able to also 'press' the *shotbutton*
-- [ ] Design a PCB to hold the sensors
+- [x] Design a PCB to hold the sensors
 - [ ] Microcontroller is able to adjust pump power via a Dimmer
 - [x] Mechanical button/knob to *manually* adjust Pump power during shots
 - [ ] Add pressure sensor
@@ -20,3 +20,10 @@ Planed features include:
 - Button is written via Optocoppler just like in [AcaiaArduinoBLE](https://github.com/tatemazer/AcaiaArduinoBLE) Library too.
 - Microcontroller is using a PWM signal to control the Dimmer, unfortunately I have not been able to get the zero crossing functionality running.
 - Encoder knob is connected to control PumpPower as the PCB is faulty and I needed to be able to keep dringing cofe while work is in progress.
+
+#### New PCB design almost ready for production:
+- [x] Added lights Power connections
+- [x] Correct false routing
+- [x] Correct Footprint of Optokopplers
+- [x] Adding on/off switch to save power on ESP
+- [ ] Get second opintion on PCB design.
