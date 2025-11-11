@@ -3,8 +3,8 @@
 
 ESP32Encoder encoder;
 
-const int encoderPinA = 32;    // Encoder pin A
-const int encoderPinB = 35;    // Encoder pin B
+const int encoderPinA = 23;    // Encoder pin A
+const int encoderPinB = 25;    // Encoder pin B
 const int dimmerPin = 5;       // PWM output pin
 const int freq = 50;           // PWM frequency (Hz)
 const int pwmChannel = 0;      // PWM channel
