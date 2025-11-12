@@ -11,9 +11,13 @@
 
 ESP32Encoder encoder;
 
+// Encoder configuration
 const int encoderPinA = 23;    // Encoder pin A (half-quad mode)
 const int encoderPinB = 25;    // Encoder pin B (half-quad mode)
-const int dimmerPin = 5;       // PWM output pin
+
+// PWM/Dimmer configuration
+// Note: DIMMER_PIN is declared as 'extern' in shot_stopper.h
+const int DIMMER_PIN = 5;      // PWM output pin (must match shot_stopper.h declaration)
 const int freq = 50;           // PWM frequency (Hz)
 const int pwmChannel = 0;      // PWM channel
 const int resolution = 8;      // 8-bit resolution (0 to 255)
@@ -62,7 +66,7 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(in, INPUT_PULLUP);      // Button input
   pinMode(OUT, OUTPUT);            // Button output (opto-isolated)
-  pinMode(dimmerPin, OUTPUT);      // Dimmer PWM output
+  pinMode(DIMMER_PIN, OUTPUT);     // Dimmer PWM output
 
   // Initialize encoder (half-quad mode for 2-pin configuration)
   //ESP32Encoder::useInternalWeakPullResistors = GPIO_PULLUP_ONLY;
@@ -72,7 +76,7 @@ void setup() {
 
   // Initialize PWM for dimmer control
   ledcSetup(pwmChannel, freq, resolution);
-  ledcAttachPin(dimmerPin, pwmChannel);
+  ledcAttachPin(DIMMER_PIN, pwmChannel);
   ledcWrite(pwmChannel, 0);  // Start with pump off
   Serial.println("PWM dimmer initialized (50Hz, 8-bit)");
 
