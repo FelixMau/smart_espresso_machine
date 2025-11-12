@@ -1,0 +1,93 @@
+╔════════════════════════════════════════════════════════════════════════════════╗
+║           DISPLAY INTEGRATION OPTIONS - SIDE BY SIDE COMPARISON                ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                         OPTION 1: SPI DISPLAY ✅ RECOMMENDED                     │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                   │
+│  PIN USAGE:                                                                      │
+│    GPIO 18  ──→  CLK/SCLK        (Clock signal)                                 │
+│    GPIO 19  ──→  MOSI            (Data to display)                              │
+│    GPIO 21  ──→  MISO            (Data from display, optional)                  │
+│    GPIO 17  ──→  CS              (Chip select)                                  │
+│    GPIO 16  ──→  DC              (Data/Command)                                 │
+│    GPIO 14  ──→  RST             (Reset)                                        │
+│    GPIO 2   ──→  BL              (Backlight PWM, optional)                      │
+│                                                                                   │
+│  CONFLICTS:                                                                      │
+│    ✓ Encoder (23,25):    NO CONFLICT                                            │
+│    ✓ Button (13,22):     NO CONFLICT                                            │
+│    ✓ Pressure (33):      NO CONFLICT                                            │
+│    ✓ Dimmer (5):         NO CONFLICT                                            │
+│                                                                                   │
+│  ADVANTAGES:                                                                     │
+│    ✓ No PCB modifications required                                              │
+│    ✓ Fast communication (10-40 MHz typical)                                     │
+│    ✓ Many display options available                                             │
+│    ✓ Multiple library choices (TFT_eSPI, Adafruit_GFX, LVGL)                   │
+│    ✓ Can add touchscreen support later (same SPI bus + IRQ)                    │
+│    ✓ Good power efficiency                                                      │
+│    ✓ Cheap & abundant displays                                                  │
+│                                                                                   │
+│  DISPLAY OPTIONS:                                                                │
+│    • ILI9341 2.8" TFT (320x240) - $10 - PRODUCTION CHOICE                      │
+│    • ST7789 1.3" TFT (240x240)  - $7  - LEARNING/PROTOTYPE                    │
+│    • GC9A01 1.28" AMOLED (240x240) - $20 - PREMIUM                             │
+│    • ST7735 1.44" TFT (128x160) - $5  - MINIMAL                                │
+│                                                                                   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                    OPTION 2: I2C DISPLAY ⚠️ REQUIRES REWORK                     │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                   │
+│  PIN USAGE:                                                                      │
+│    GPIO 21  ──→  SDA            (I2C Data)                                      │
+│    GPIO 22  ──→  SCL            (I2C Clock)  ← ⚠️ CONFLICT!                     │
+│                                                                                   │
+│  CONFLICTS:                                                                      │
+│    ✗ GPIO 22 used by Button Output (solenoid control)                           │
+│       Would break solenoid functionality!                                        │
+│                                                                                   │
+│  WORKAROUND (Requires PCB redesign):                                            │
+│    Move OUT pin from GPIO 22 → GPIO 32                                          │
+│    Then use GPIO 22 for I2C clock                                               │
+│    This requires PCB redesign and rewiring                                      │
+│                                                                                   │
+│  RECOMMENDATION: NOT RECOMMENDED                                                │
+│    Use SPI instead - no rework needed                                           │
+│                                                                                   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│              OPTION 3: PARALLEL DISPLAY ❌ NOT VIABLE                            │
+├─────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                   │
+│  CONFLICTS:                                                                      │
+│    ✗ GPIO 23 = ENCODER_A (pump control) - CONFLICT!                            │
+│    ✗ GPIO 25 = ENCODER_B (pump control) - CONFLICT!                            │
+│    ✗ Would lose rotary encoder functionality (unacceptable!)                    │
+│    ✗ Requires 11+ GPIO pins (very tight)                                        │
+│                                                                                   │
+│  RECOMMENDATION: STRONGLY AVOID                                                 │
+│    Losing pump control is NOT acceptable                                        │
+│                                                                                   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                            FINAL VERDICT                                        ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+Your PCB is PERFECTLY SUITED for SPI display integration:
+
+  ✓ Zero pin conflicts (encoder & button are safe)
+  ✓ Plenty of free GPIO for display control
+  ✓ Good power budget for display (~290 mA total)
+  ✓ No PCB modifications required
+  ✓ Many display options available
+  ✓ Excellent library support (TFT_eSPI)
+
+RECOMMENDATION: Add SPI display with TFT_eSPI library
+SUGGESTED FIRST DISPLAY: ST7789 1.3" ($7 - learner-friendly)
+PRODUCTION DISPLAY: ILI9341 2.8" ($10 - professional)

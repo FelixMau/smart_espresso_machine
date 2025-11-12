@@ -1,0 +1,147 @@
+================================================================================
+ESP32 PIN ALLOCATION DIAGRAM
+Smart Espresso Machine Project
+================================================================================
+
+CURRENT ALLOCATION (Firmware v2.0 - Integrated)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GPIO | PIN NAME        | CURRENT USE          | TYPE | NOTES
+━━━━━┿━━━━━━━━━━━━━━━━┿━━━━━━━━━━━━━━━━━━━━━┿━━━━━┿━━━━━━━━━━━━━━━━━━━━━━━━
+  0  | BOOT           | [RESERVED]           | -    | Boot mode select (pulled LOW)
+  1  | TX0            | [SERIAL]             | I/O  | UART0 TX (Serial console)
+  2  | IO2            | [AVAILABLE]          | I/O  | PWM capable ← Display BL
+  3  | RX0            | [SERIAL]             | I/O  | UART0 RX (Serial console)
+  4  | IO4            | [AVAILABLE]          | I/O  | ZERO_CROSS_PIN (unused)
+━━━━━┿━━━━━━━━━━━━━━━━┿━━━━━━━━━━━━━━━━━━━━━┿━━━━━┿━━━━━━━━━━━━━━━━━━━━━━━━
+  5  | IO5            | DIMMER_PIN ✓         | PWM  | Pump speed control (50Hz, 8-bit)
+  6  | CS0            | [SPI FLASH]          | -    | On-board flash memory
+  7  | MOSI           | [SPI FLASH]          | -    | On-board flash memory
+  8  | MISO           | [AVAILABLE]          | I/O  | SPI flash not used
+  9  | SK             | [SPI FLASH]          | -    | On-board flash memory
+━━━━━┿━━━━━━━━━━━━━━━━┿━━━━━━━━━━━━━━━━━━━━━┿━━━━━┿━━━━━━━━━━━━━━━━━━━━━━━━
+ 10  | (same as 9)    | [SPI FLASH]          | -    | On-board flash memory
+ 11  | (same as 9)    | [SPI FLASH]          | -    | On-board flash memory
+ 12  | MTDI           | [AVAILABLE]          | I/O  | Boot conflict risk - avoid if possible
+ 13  | IN ✓           | BUTTON INPUT         | DIN  | Brew switch (active LOW) / Reed switch
+━━━━━┿━━━━━━━━━━━━━━━━┿━━━━━━━━━━━━━━━━━━━━━┿━━━━━┿━━━━━━━━━━━━━━━━━━━━━━━━
+ 14  | IO14           | [AVAILABLE]          | I/O  | PWM capable ← Display RST
+ 15  | MTDO           | [AVAILABLE]          | I/O  | Boot output conflict - avoid if possible
+ 16  | IO16           | [AVAILABLE]          | I/O  | PWM capable ← Display DC
+ 17  | IO17           | [AVAILABLE]          | I/O  | PWM capable ← Display CS
+ 18  | IO18           | [AVAILABLE]          | I/O  | PWM capable ← Display CLK/SCLK
+━━━━━┿━━━━━━━━━━━━━━━━┿━━━━━━━━━━━━━━━━━━━━━┿━━━━━┿━━━━━━━━━━━━━━━━━━━━━━━━
+ 19  | IO19           | [AVAILABLE]          | I/O  | PWM capable ← Display MOSI
+ 20  | IO20           | [AVAILABLE]          | I/O  | PWM capable
+ 21  | IO21           | [AVAILABLE]          | I/O  | PWM capable ← Display MISO
+ 22  | OUT ✓          | BUTTON OUTPUT        | DO   | Opto-isolated solenoid control
+ 23  | ENCODER_A ✓    | ENCODER INPUT        | DIN  | Pump power adjust (quadrature A)
+━━━━━┿━━━━━━━━━━━━━━━━┿━━━━━━━━━━━━━━━━━━━━━┿━━━━━┿━━━━━━━━━━━━━━━━━━━━━━━━
+ 24  | IO24           | [AVAILABLE]          | I/O  | PWM capable
+ 25  | ENCODER_B ✓    | ENCODER INPUT        | DIN  | Pump power adjust (quadrature B)
+ 26  | IO26           | [AVAILABLE]          | I/O  | PWM capable
+ 27  | IO27           | [AVAILABLE]          | I/O  | PWM capable
+ 28  | IO28           | [AVAILABLE]          | I/O  | PWM capable
+━━━━━┿━━━━━━━━━━━━━━━━┿━━━━━━━━━━━━━━━━━━━━━┿━━━━━┿━━━━━━━━━━━━━━━━━━━━━━━━
+ 29  | IO29           | [AVAILABLE]          | I/O  | PWM capable
+ 30  | IO30           | [AVAILABLE]          | I/O  | PWM capable
+ 31  | IO31           | [AVAILABLE]          | I/O  | PWM capable
+ 32  | IO32           | [AVAILABLE]          | I/O  | ADC1_4 ← Alternative for OUT
+ 33  | PRESSURE_PIN ✓ | PRESSURE SENSOR      | AIN  | MPX5500 pressure sensor (0-16 bar)
+━━━━━┿━━━━━━━━━━━━━━━━┿━━━━━━━━━━━━━━━━━━━━━┿━━━━━┿━━━━━━━━━━━━━━━━━━━━━━━━
+ 34  | INPUT_ONLY     | [AVAILABLE]          | AIN  | Input-only (no output capability)
+ 35  | INPUT_ONLY     | [AVAILABLE]          | AIN  | Input-only (no output capability)
+ 36  | INPUT_ONLY     | [AVAILABLE]          | AIN  | Input-only (no output capability)
+ 37  | INPUT_ONLY     | [AVAILABLE]          | AIN  | Input-only (no output capability)
+ 38  | INPUT_ONLY     | [AVAILABLE]          | AIN  | Input-only (no output capability)
+ 39  | INPUT_ONLY     | [AVAILABLE]          | AIN  | Input-only (no output capability)
+━━━━━┴━━━━━━━━━━━━━━┴━━━━━━━━━━━━━━━━━━━━━┴━━━━━┴━━━━━━━━━━━━━━━━━━━━━━━━
+
+LEGEND:
+  ✓ = Currently in use
+  I/O = Input/Output capable
+  DIN = Digital Input
+  DO = Digital Output
+  PWM = PWM-capable (PWM dimmer, timers available)
+  AIN = Analog Input (ADC)
+  [RESERVED] = Reserved by framework, do not use
+  [AVAILABLE] = Free to use for new features
+  [SPI FLASH] = On-board flash memory, do not use
+  [SERIAL] = UART0 console, do not use for application logic
+
+================================================================================
+DISPLAY INTEGRATION MAPPING (SPI Display)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+RECOMMENDED SPI PIN ALLOCATION:
+
+Display Signal    | Recommended GPIO | Alt GPIO  | Notes
+──────────────────┼──────────────────┼───────────┼──────────────────────────
+MOSI (SI)         | GPIO 19          | GPIO 8    | SPI data to display
+MISO (SO)         | GPIO 21          | GPIO 9    | SPI data from display (optional)
+CLK/SCLK          | GPIO 18          | GPIO 10   | SPI clock
+CS (Chip Select)  | GPIO 17          | GPIO 20   | Display selection
+DC (Data/Cmd)     | GPIO 16          | GPIO 24   | Command vs data select
+RST (Reset)       | GPIO 14          | GPIO 26   | Active LOW reset
+BL (Backlight)    | GPIO 2           | GPIO 4    | PWM for brightness control
+
+WHY THESE PINS?
+  • All SPI pins (18-21) form a natural group
+  • Control pins (14,16,17) are adjacent
+  • GPIO 2 & 4 have no conflicts (PWM capable)
+  • Encoder (23,25) completely isolated from display I/O
+  • Allows future I2C on GPIO 21,22 if needed (GPIO 22 = OUT, need rework)
+
+ALTERNATIVE: I2C DISPLAY (Requires PCB changes)
+  • SDA (Data)      | GPIO 21          | Standard I2C data
+  • SCL (Clock)     | GPIO 22          | Standard I2C clock
+  • ⚠️ CONFLICT: GPIO 22 currently = OUT (solenoid)
+  • Solution: Move OUT to GPIO 32 (requires PCB redesign)
+  • Not recommended unless you specifically want I2C touch-screen
+
+================================================================================
+POWER BUDGET ANALYSIS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Component              | Typical Current @ 3.3V | Peak Current | Notes
+───────────────────────┼────────────────────────┼──────────────┼─────────────
+ESP32 (core)           | 80 mA                  | 160 mA       | RX/TX spikes
+Pump Motor (dimmer)    | 0-400 mA (external)    | N/A          | Via MOSFET relay
+Encoder                | <5 mA                  | <10 mA       | Very low power
+Button/Reed Input      | <1 mA                  | <5 mA        | Via pull-up
+Scale BLE              | 20 mA avg              | 50 mA        | Periodic updates
+Pressure Sensor (ADC)  | <5 mA                  | <10 mA       | Single ADC pin
+───────────────────────┼────────────────────────┼──────────────┤ Subtotal: ~110 mA
+Display (ILI9341 SPI)  | 80 mA                  | 100 mA       | Full brightness
+Backlight PWM          | 0-80 mA                | 0-100 mA     | Brightness adjustable
+───────────────────────┼────────────────────────┼──────────────┤ Subtotal: ~180 mA
+═══════════════════════╪════════════════════════╪══════════════╪═════════════
+TOTAL (Display ON)     | ~290 mA                | ~350 mA      | ✓ Within budget
+TOTAL (Display OFF)    | ~110 mA                | ~160 mA      | ✓ Very efficient
+
+POWER SUPPLY RECOMMENDATION:
+  • 5V / 1000-2000 mA USB supply (internal LDO provides ~600mA @ 3.3V)
+  • OR 3.3V direct supply (requires external PSU with 500mA+)
+  • Ensure good power distribution (bulk caps on 5V and 3.3V)
+
+================================================================================
+SUMMARY: PCB VIABILITY FOR DISPLAY ADDITION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ EXCELLENT NEWS:
+
+1. Current pin allocation is VERY display-friendly
+2. Encoder pins (23,25) are NOT on SPI bus ⟹ Can coexist with SPI display
+3. Button pins (13,22) are separate from display I/O ⟹ No conflicts
+4. Plenty of free GPIO for SPI display (14,16,17,18,19,21) ⟹ Room for growth
+5. Pressure sensor (33) is analog-only ⟹ Doesn't conflict with digital I/O
+6. Dimmer (5) has its own PWM channel ⟹ Can add backlight PWM separately
+
+CONCLUSION:
+  → SPI Display integration requires NO PCB modifications
+  → Add display header in next revision (8-pin SPI connector)
+  → Current firmware can support display with just software changes
+  → Power budget is comfortable for display + current system
+  → Recommended: ST7789 1.3" or ILI9341 2.8" TFT
+
+================================================================================
