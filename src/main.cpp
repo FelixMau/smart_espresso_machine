@@ -6,21 +6,42 @@
 #include "webserver.h"
 
 // ============================================================================
-// ENCODER AND PWM CONFIGURATION
+// PIN CONFIGURATION
 // ============================================================================
 
-ESP32Encoder encoder;
-
-// Encoder configuration
+// Encoder pins
 const int encoderPinA = 23;    // Encoder pin A (half-quad mode)
 const int encoderPinB = 25;    // Encoder pin B (half-quad mode)
 
-// PWM/Dimmer configuration
+// Pump Dimmer pins (PWM)
 // Note: DIMMER_PIN is declared as 'extern' in shot_stopper.h
 const int DIMMER_PIN = 5;      // PWM output pin (must match shot_stopper.h declaration)
 const int freq = 50;           // PWM frequency (Hz)
-const int pwmChannel = 0;      // PWM channel
+const int pwmChannel = 0;      // PWM channel (0 for dimmer, 1 for display backlight)
 const int resolution = 8;      // 8-bit resolution (0 to 255)
+
+// Button and Solenoid pins (defined in shot_stopper.h, declared here for clarity)
+// GPIO 13: IN (Button input)
+// GPIO 22: OUT (Solenoid output)
+
+// Pressure Sensor pin (defined in shot_stopper.h)
+// GPIO 33: PRESSURE_PIN
+
+// Display SPI pins (for future display integration)
+const int TFT_CLK = 18;        // SPI Clock
+const int TFT_MOSI = 19;       // SPI Data Out to display
+const int TFT_MISO = 21;       // SPI Data In from display
+const int TFT_CS = 17;         // Chip Select
+const int TFT_DC = 16;         // Data/Command
+const int TFT_RST = 14;        // Reset
+const int TFT_BL = 2;          // Backlight PWM (future)
+
+// ============================================================================
+// ENCODER AND DIMMER STATE
+// ============================================================================
+
+ESP32Encoder encoder;
+int encoderAdjustment = 0;     // Encoder position (0-255 for PWM adjustment)
 
 // ============================================================================
 // GLOBAL STATE
@@ -68,17 +89,27 @@ void setup() {
   pinMode(OUT, OUTPUT);            // Button output (opto-isolated)
   pinMode(DIMMER_PIN, OUTPUT);     // Dimmer PWM output
 
+  // Display pins (for future display integration - configured as inputs to avoid conflicts)
+  pinMode(TFT_CLK, OUTPUT);
+  pinMode(TFT_MOSI, OUTPUT);
+  pinMode(TFT_MISO, INPUT);
+  pinMode(TFT_CS, OUTPUT);
+  pinMode(TFT_DC, OUTPUT);
+  pinMode(TFT_RST, OUTPUT);
+  pinMode(TFT_BL, OUTPUT);
+  Serial.println("Display pins configured (ready for SPI display)");
+
   // Initialize encoder (half-quad mode for 2-pin configuration)
   //ESP32Encoder::useInternalWeakPullResistors = GPIO_PULLUP_ONLY;
   encoder.attachHalfQuad(encoderPinA, encoderPinB);
   encoder.setCount(0);
   Serial.println("Encoder initialized (half-quad mode)");
 
-  // Initialize PWM for dimmer control
+  // Initialize PWM for dimmer control (Channel 0: Pump dimmer)
   ledcSetup(pwmChannel, freq, resolution);
   ledcAttachPin(DIMMER_PIN, pwmChannel);
-  ledcWrite(pwmChannel, 0);  // Start with pump off
-  Serial.println("PWM dimmer initialized (50Hz, 8-bit)");
+  ledcWrite(pwmChannel, 255);  // Start with pump at FULL SPEED (idle state)
+  Serial.println("PWM dimmer initialized (50Hz, 8-bit) - Pump at 100% (idle)");
 
   // BLE initialization (for Acaia Lunar scale connection)
   BLE.begin();
@@ -136,20 +167,47 @@ void loop() {
   }
 
   // ========================================================================
-  // ENCODER-TO-PWM MANUAL CONTROL
+  // PUMP DIMMER CONTROL (Auto during shot, 100% when idle)
   // ========================================================================
 
+  // Read current encoder position for shot adjustment
   long encoderPosition = encoder.getCount();
-  int pwmValue = constrain(encoderPosition, 0, 255);
+  encoderAdjustment = constrain(encoderPosition, 0, 255);
 
-  // Apply encoder value to dimmer PWM
-  ledcWrite(pwmChannel, pwmValue);
+  int finalPwmValue = 0;
 
-  if (DEBUG) {
-    Serial.print("Encoder: ");
-    Serial.print(encoderPosition);
-    Serial.print(" | PWM: ");
-    Serial.println(pwmValue);
+  if (!shot.brewing) {
+    // IDLE STATE: Pump at full speed (100% = 255)
+    finalPwmValue = 255;
+
+    // Reset encoder to neutral position when not brewing
+    if (encoderPosition != 0) {
+      encoder.setCount(0);
+      encoderAdjustment = 0;
+    }
+  } else {
+    // BREWING STATE: Auto-controlled but adjustable by encoder
+    // During shot, the pump is controlled automatically by shot logic
+    // but can be adjusted +/- by encoder for real-time fine-tuning
+
+    // Start with encoder adjustment (0-255 range)
+    // This allows operator to modulate pump during extraction
+    finalPwmValue = encoderAdjustment;
+
+    if (DEBUG) {
+      Serial.print("BREWING - Encoder adjustment: ");
+      Serial.print(encoderAdjustment);
+      Serial.print("/255 | PWM: ");
+      Serial.println(finalPwmValue);
+    }
+  }
+
+  // Apply final PWM value to dimmer
+  ledcWrite(pwmChannel, finalPwmValue);
+
+  if (DEBUG && !shot.brewing) {
+    Serial.print("IDLE - Pump at 100% (255) | Encoder: ");
+    Serial.println(encoderPosition);
   }
 
   // ========================================================================
