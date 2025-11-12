@@ -29,4 +29,5 @@ Planed features include:
 - [x] Correct false routing
 - [x] Correct Footprint of Optokopplers
 - [x] Adding on/off switch to save power on ESP
-- [ ] Get second opintion on PCB design.
+- [x] Get second opintion on PCB design.
+- [x] Added interface for potential Display
