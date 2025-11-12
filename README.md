@@ -1,9 +1,9 @@
-### smart espresso machine
+# smart espresso machine
 This is a more or less private project where I work on my Espresso machine to digitalise and IOT enable my espresso machine.
 
 **This project is on hold since I cannot afford printing another PCB at the moment**
 
-#### Planned features
+### Planned features
 Planed features include:
 - [x] Connect the scale to the microcontroller
 - [ ] Microcontroller can read the *shotbutton* from the machine
@@ -15,7 +15,7 @@ Planed features include:
 - [ ] Pressure seonsor readings are shown on a simple display.
 - [ ] Design cases for PCB, display, knob
 
-#### Working details of Features
+### Working details of Features
 - Connection of Scale to Microcontroller
   - Scale is a Acaia Lunar scale and I am using @tatemazer's [AcaiaArduinoBLE](https://github.com/tatemazer/AcaiaArduinoBLE) Library
   - Microcontroller is a ESP32 Board
@@ -24,7 +24,7 @@ Planed features include:
 - Microcontroller is using a PWM signal to control the Dimmer, unfortunately I have not been able to get the zero crossing functionality running.
 - Encoder knob is connected to control PumpPower as the PCB is faulty and I needed to be able to keep dringing cofe while work is in progress.
 
-#### New PCB design almost ready for production:
+### New PCB design almost ready for production:
 - [x] Added lights Power connections
 - [x] Correct false routing
 - [x] Correct Footprint of Optokopplers
