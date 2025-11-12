@@ -1,5 +1,8 @@
 ### smart espresso machine
 This is a more or less private project where I work on my Espresso machine to digitalise and IOT enable my espresso machine.
+
+**This project is on hold since I cannot afford printing another PCB at the moment**
+
 #### Planned features
 Planed features include:
 - [x] Connect the scale to the microcontroller
