@@ -1,7 +1,7 @@
 #include <AcaiaArduinoBLE.h>
 #include <EEPROM.h>
 #include <ArduinoJson.h>
-#include <rbdimmerESP32.h>
+#include "debug.h"
 
 #define MAX_OFFSET 5                // In case an error in brewing occured
 #define MIN_SHOT_DURATION_S 3       //Useful for flushing the group.
@@ -17,8 +17,6 @@
 #define WEIGHT_ADDR 0  // Use the first byte of EEPROM to store the goal weight
 #define OFFSET_ADDR 1  
 
-#define DEBUG false
-
 #define N 10                        // Number of datapoints used to calculate trend line
 
 //User defined***
@@ -30,6 +28,8 @@
 #define AUTOTARE true         // Automatically tare when shot is started 
                               //  and 3 seconds after a latching switch brew 
                               // (as defined by MOMENTARY)
+
+#define DEBUG false
 //***************
 
 // Board Hardware 
@@ -44,7 +44,7 @@
   #define REED_IN     25
 #endif 
 
-#define PRESSURE_PIN 33 // Analog pin for pressure sensor (MPX5500 or similar)
+#define PRESSURE_PIN 32 // Analog pin for pressure sensor (MPX5500 or similar)
 
 #define BUTTON_STATE_ARRAY_LENGTH 8
 extern const int DIMMER_PIN;
@@ -94,6 +94,7 @@ struct Shot {
   int numPressureGoalsByTime;
   PressureGoalByTimeLeft pressureGoalByTimeLeft[MAX_PRESSURE_GOALS];
   int numPressureGoalsByTimeLeft;
+  float current_goal_pressure;
 
   // Add these:
   float goalWeight;
@@ -102,20 +103,31 @@ struct Shot {
 
 //Initialize shot
 Shot shot = {
-  0,0,0,0,{},{},0,false,ENDTYPE::UNDEF,
+  0, // start_timestamp_s
+  0, // shotTimer
+  0, // end_s
+  0, // expected_end_s
+  {}, // weight
+  {}, // time_s
+  0, // datapoints
+  false, // brewing
+  ENDTYPE::UNDEF, // end
   0, // pressure
-  // Example: 3 pressure goals by time
+  // pressureGoalByTime
   {
     {0.0f, 2.0f},    // 0s: 2 bar
     {5.0f, 9.0f},    // 5s: 9 bar
     {20.0f, 6.0f}    // 20s: 6 bar
   },
   3, // numPressureGoalsByTime
-  // Example: 1 pressure goal by time left
+  // pressureGoalByTimeLeft
   {
     {5.0f, 4.0f}     // 5s left: 4 bar
   },
-  1  // numPressureGoalsByTimeLeft
+  1, // numPressureGoalsByTimeLeft
+  0, // current_goal_pressure
+  0, // goalWeight (set from EEPROM later)
+  0  // weightOffset (set from EEPROM later)
 };
 
 // Expose shot for use in other modules
@@ -139,8 +151,7 @@ void updatePressureSensor(Shot* s) {
   } else {
     s->pressure = (voltage - 0.4f) * (16.0f / (3.3f - 0.4f));
   }
-  Serial.print("Pressure: ");
-  Serial.print(s->pressure);
+  DEBUG_SENSOR_PRINT("Pressure: %.2f bar", s->pressure);
 }
 
 
@@ -171,7 +182,7 @@ void calculateEndTime(Shot* s) {
 
 void setBrewingState(bool brewing) {
   if(brewing){
-    Serial.println("shot started");
+    DEBUG_SHOT_PRINT("Shot started");
     shot.start_timestamp_s = seconds_f();
     shot.shotTimer = 0;
     shot.datapoints = 0;
@@ -180,37 +191,39 @@ void setBrewingState(bool brewing) {
     if(AUTOTARE){
       scale.tare();
     }
-    Serial.println("Weight Timer End");
   }else{
-    Serial.print("ShotEnded by ");
+    const char* endReason = "UNDEF";
     switch (shot.end) {
       case ENDTYPE::TIME:
-      Serial.println("time");
-      break;
-    case ENDTYPE::WEIGHT:
-    Serial.println("weight");
-      break;
-    case ENDTYPE::BUTTON:
-    Serial.println("button");
-      break;
-    case ENDTYPE::UNDEF:
-      Serial.println("undef");
-      break;
+        endReason = "TIME";
+        break;
+      case ENDTYPE::WEIGHT:
+        endReason = "WEIGHT";
+        break;
+      case ENDTYPE::BUTTON:
+        endReason = "BUTTON";
+        break;
+      case ENDTYPE::UNDEF:
+        endReason = "UNDEF";
+        break;
     }
+    DEBUG_SHOT_PRINT("Shot ended by: %s (duration: %.1f s)", endReason, seconds_f() - shot.start_timestamp_s);
 
     shot.end_s = seconds_f() - shot.start_timestamp_s;
     scale.stopTimer();
     if(MOMENTARY &&
       (ENDTYPE::WEIGHT == shot.end || ENDTYPE::TIME == shot.end)){
       //Pulse button to stop brewing
-      digitalWrite(OUT,HIGH);Serial.println("wrote high");
+      DEBUG_SHOT_PRINT("Writing solenoid HIGH");
+      digitalWrite(OUT,HIGH);
       delay(1000);
-      digitalWrite(OUT,LOW);Serial.println("wrote low");
+      DEBUG_SHOT_PRINT("Writing solenoid LOW");
+      digitalWrite(OUT,LOW);
     }else if(!MOMENTARY){
       buttonLatched = false;
       buttonPressed = false;
-      Serial.println("Button Unlatched and not pressed");
-      digitalWrite(OUT,LOW); Serial.println("wrote low");
+      DEBUG_SHOT_PRINT("Button unlatched and not pressed");
+      digitalWrite(OUT,LOW);
     }
   } 
 
@@ -226,17 +239,8 @@ void updateShotTrajectory(Shot* shot, float currentWeight) {
     shot->shotTimer = shot->time_s[shot->datapoints];
     shot->datapoints++;
 
-    Serial.print(" ");
-    Serial.print(shot->shotTimer);
-
     // Get the likely end time of the shot
     calculateEndTime(shot);
-    Serial.print(" ");
-    Serial.print(shot->expected_end_s);
-
-    Serial.print(" ");
-    Serial.print("goal Weight:");
-    Serial.print(shot->goalWeight);
 
     // --- Pressure goal logic ---
     float goalPressure = 0.0f;
@@ -253,31 +257,25 @@ void updateShotTrajectory(Shot* shot, float currentWeight) {
         goalPressure = shot->pressureGoalByTimeLeft[i].pressure;
       }
     }
+    shot->current_goal_pressure = goalPressure;
 
-    // Pressure control logic
-    int setLevel = 0;
-    if (shot->pressure < goalPressure) {
-      digitalWrite(DIMMER_PIN, HIGH); // Ensure pump is ON
-      Serial.print(" | Pump ON");
-    } else {
-      digitalWrite(DIMMER_PIN, LOW); // Ensure pump is OFF
-      Serial.print(" | Pump OFF");
-    }
-
-    Serial.print(" | GoalPressure: ");
-    Serial.print(goalPressure);
-
-    // --- end pressure goal logic ---
-    Serial.print(" | CurrentPressure: ");
-    Serial.print(shot->pressure);
+    // Detailed shot trajectory logging
+    DEBUG_SHOT_PRINT("Time: %.1f s | Weight: %.1f g | Expected end: %.1f s | Goal weight: %.0f g | Pump: %s | Goal pressure: %.1f bar | Current pressure: %.1f bar",
+      shot->shotTimer,
+      shot->weight[shot->datapoints - 1],
+      shot->expected_end_s,
+      shot->goalWeight,
+      (shot->pressure < goalPressure) ? "ON" : "OFF",
+      goalPressure,
+      shot->pressure
+    );
   }
-  Serial.println();
 }
 
 void handleMaxDurationReached(Shot* shot) {
   if (shot->brewing && shot->shotTimer > MAX_SHOT_DURATION_S) {
     shot->brewing = false;
-    Serial.println("Max brew duration reached");
+    DEBUG_SHOT_PRINT("Max brew duration reached (%.1f s > %.1f s)", shot->shotTimer, MAX_SHOT_DURATION_S);
     shot->end = ENDTYPE::TIME;
     setBrewingState(shot->brewing);
   }
@@ -287,7 +285,7 @@ void handleShotEnd(Shot* shot, float currentWeight) {
   if (shot->brewing 
       && shot->shotTimer >= shot->expected_end_s 
       && shot->shotTimer > MIN_SHOT_DURATION_S) {
-    Serial.println("weight achieved");
+    DEBUG_SHOT_PRINT("Goal weight achieved (%.1f g >= %.1f g - %.1f g offset)", currentWeight, shot->goalWeight, shot->weightOffset);
     shot->brewing = false;
     shot->end = ENDTYPE::WEIGHT;
     setBrewingState(shot->brewing);
@@ -302,24 +300,19 @@ void detectShotError(Shot* shot, float currentWeight) {
     shot->start_timestamp_s = 0;
     shot->end_s = 0;
 
-    Serial.print("I detected a final weight of ");
-    Serial.print(currentWeight);
-    Serial.print("g. The goal was ");
-    Serial.print(shot->goalWeight);
-    Serial.print("g with a negative offset of ");
-    Serial.print(shot->weightOffset);
-
     if (abs(currentWeight - shot->goalWeight + shot->weightOffset) > MAX_OFFSET) {
-      Serial.print("g. Error assumed. Offset unchanged. ");
+      DEBUG_SHOT_PRINT("Weight error detected: final=%.1f g, goal=%.0f g, offset=%.1f g - Error too large, offset unchanged",
+        currentWeight, shot->goalWeight, shot->weightOffset);
     } else {
-      Serial.print("g. Next time I'll create an offset of ");
-      shot->weightOffset += currentWeight - shot->goalWeight;
-      Serial.print(shot->weightOffset);
+      float newOffset = shot->weightOffset + currentWeight - shot->goalWeight;
+      DEBUG_SHOT_PRINT("Weight correction: final=%.1f g, goal=%.0f g, old_offset=%.1f g → new_offset=%.1f g",
+        currentWeight, shot->goalWeight, shot->weightOffset, newOffset);
+      shot->weightOffset = newOffset;
 
       EEPROM.write(OFFSET_ADDR, (uint8_t)(shot->weightOffset * 10)); // 1 byte, 0-255
       EEPROM.commit();
+      DEBUG_SHOT_PRINT("New offset saved to EEPROM");
     }
-    Serial.println();
   }
 }
 
@@ -351,7 +344,7 @@ void handleButtonLogic() {
   switch (buttonState) {
     case IDLE:
       if (newButtonState) {
-        Serial.println("ButtonPressed");
+        DEBUG_BUTTON_PRINT("Button pressed");
         buttonState = PRESSED;
         buttonPressed = true;
         if (!MOMENTARY) {
@@ -363,7 +356,7 @@ void handleButtonLogic() {
 
     case PRESSED:
       if (!newButtonState) {
-        Serial.println("Button Released");
+        DEBUG_BUTTON_PRINT("Button released");
         buttonState = RELEASED;
         buttonPressed = false;
         shot.brewing = !shot.brewing;
@@ -372,11 +365,11 @@ void handleButtonLogic() {
         }
         setBrewingState(shot.brewing);
       } else if (!MOMENTARY && shot.brewing && !buttonLatched && (shot.shotTimer > MIN_SHOT_DURATION_S)) {
-        Serial.println("Button Latched");
+        DEBUG_BUTTON_PRINT("Button latched");
         buttonState = HELD;
         buttonLatched = true;
+        DEBUG_BUTTON_PRINT("Writing solenoid HIGH");
         digitalWrite(OUT, HIGH);
-        Serial.println("wrote high");
         if (AUTOTARE) {
           scale.tare();
         }
@@ -385,7 +378,7 @@ void handleButtonLogic() {
 
     case HELD:
       if (newButtonState) {
-        Serial.println("Button Released");
+        DEBUG_BUTTON_PRINT("Button released");
         buttonState = RELEASED;
         buttonPressed = false;
         shot.brewing = false;
