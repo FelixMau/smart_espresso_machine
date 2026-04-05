@@ -1,9 +1,17 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 #include <ESP32Encoder.h>
+#include "debug.h"
 #include "shot_stopper.h"
 #include "AcaiaArduinoBLE.h"
 #include "webserver.h"
+
+// ============================================================================
+// TESTING CONFIGURATION
+// ============================================================================
+#define TESTING_MODE_NO_SCALE false    // Set to true to disable scale/BLE connection during testing
+#define TESTING_PRINT_ENCODER true    // Print encoder position and PWM to Serial
+#define TESTING_PRINT_SCALE_STATUS true // Print scale connection and pressure health status
 
 // ============================================================================
 // PIN CONFIGURATION
@@ -41,7 +49,7 @@ const int TFT_BL = 2;          // Backlight PWM (future)
 // ============================================================================
 
 ESP32Encoder encoder;
-int encoderAdjustment = 0;     // Encoder position (0-255 for PWM adjustment)
+int encoderAdjustment = 255;     // Encoder position (0-255 for PWM adjustment)
 
 // ============================================================================
 // GLOBAL STATE
@@ -54,12 +62,16 @@ float currentWeight = 0.0;     // Current scale reading
 // SETUP: Initialize all hardware and software components
 // ============================================================================
 
+  int finalPwmValue = 255;
+
 void setup() {
   // CPU and serial configuration
   setCpuFrequencyMhz(80);
   Serial.begin(9600);
   delay(100);
-  Serial.println("\n\n=== Smart Espresso Machine Starting ===\n");
+  DEBUG_STARTUP_PRINT("========================================");
+  DEBUG_STARTUP_PRINT("Smart Espresso Machine Starting");
+  DEBUG_STARTUP_PRINT("========================================");
 
   // EEPROM initialization
   EEPROM.begin(EEPROM_SIZE);
@@ -68,19 +80,17 @@ void setup() {
   shot.goalWeight = EEPROM.read(WEIGHT_ADDR);
   shot.weightOffset = EEPROM.read(OFFSET_ADDR) / 10.0;
 
-  Serial.print("Goal Weight retrieved: ");
-  Serial.println(shot.goalWeight);
-  Serial.print("Offset retrieved: ");
-  Serial.println(shot.weightOffset);
+  DEBUG_STARTUP_PRINT("Goal Weight retrieved: %.0f g", shot.goalWeight);
+  DEBUG_STARTUP_PRINT("Offset retrieved: %.1f g", shot.weightOffset);
 
   // Validate EEPROM values; use defaults if unreasonable
   if ((shot.goalWeight < 10) || (shot.goalWeight > 200)) {
     shot.goalWeight = 36;
-    Serial.println("Goal Weight out of range, set to default: 36g");
+    DEBUG_STARTUP_PRINT("Goal Weight out of range, set to default: 36 g");
   }
   if (shot.weightOffset > MAX_OFFSET) {
     shot.weightOffset = 1.5;
-    Serial.println("Offset out of range, set to default: 1.5g");
+    DEBUG_STARTUP_PRINT("Offset out of range, set to default: 1.5 g");
   }
 
   // GPIO pin initialization
@@ -97,31 +107,61 @@ void setup() {
   pinMode(TFT_DC, OUTPUT);
   pinMode(TFT_RST, OUTPUT);
   pinMode(TFT_BL, OUTPUT);
-  Serial.println("Display pins configured (ready for SPI display)");
+  DEBUG_STARTUP_PRINT("Display pins configured (ready for SPI display)");
 
   // Initialize encoder (half-quad mode for 2-pin configuration)
   //ESP32Encoder::useInternalWeakPullResistors = GPIO_PULLUP_ONLY;
   encoder.attachHalfQuad(encoderPinA, encoderPinB);
   encoder.setCount(0);
-  Serial.println("Encoder initialized (half-quad mode)");
-
+  DEBUG_STARTUP_PRINT("Encoder initialized (half-quad mode)");
+ 
   // Initialize PWM for dimmer control (Channel 0: Pump dimmer)
   ledcSetup(pwmChannel, freq, resolution);
   ledcAttachPin(DIMMER_PIN, pwmChannel);
   ledcWrite(pwmChannel, 255);  // Start with pump at FULL SPEED (idle state)
-  Serial.println("PWM dimmer initialized (50Hz, 8-bit) - Pump at 100% (idle)");
+  DEBUG_STARTUP_PRINT("PWM dimmer initialized (50Hz, 8-bit) - Pump at 100%% (idle)");
 
+  #if !TESTING_MODE_NO_SCALE
   // BLE initialization (for Acaia Lunar scale connection)
   BLE.begin();
   BLE.setLocalName("shotStopper");
-  Serial.println("Bluetooth initialized for scale connection");
+  DEBUG_STARTUP_PRINT("Bluetooth initialized for scale connection");
+  #else
+  DEBUG_STARTUP_PRINT("TESTING MODE: Scale/BLE connection disabled");
+  #endif
 
   // WiFi and web server initialization (optional)
   // Uncomment these lines if you have WiFi credentials configured in secrets.h
   // initializeWiFi();
   // initializeServer(&shot);
 
-  Serial.println("=== Setup Complete ===\n");
+  DEBUG_STARTUP_PRINT("Setup Complete");
+}
+
+
+void printScalePressureStatus() {
+  static unsigned long lastStatusMs = 0;
+  if (!TESTING_PRINT_SCALE_STATUS) {
+    return;
+  }
+  if (millis() - lastStatusMs < 1000) {
+    return;
+  }
+  lastStatusMs = millis();
+  int raw = analogRead(PRESSURE_PIN);
+  float voltage = raw * (3.3f / 4095.0f);
+  float pressure = 0.0f;
+  if (voltage < 0.4f) {
+    pressure = 0.0f;
+  } else if (voltage > 3.3f) {
+    pressure = 16.0f;
+  } else {
+    pressure = (voltage - 0.4f) * (16.0f / (3.3f - 0.4f));
+  }
+
+
+
+  DEBUG_SENSOR_PRINT("Pressure raw: %d | voltage: %.2f V | pressure: %.2f bar", raw, voltage, pressure);
 }
 
 // ============================================================================
@@ -133,11 +173,12 @@ void loop() {
   // SCALE CONNECTION AND DATA POLLING
   // ========================================================================
 
+  #if !TESTING_MODE_NO_SCALE
   // Attempt to connect to scale if not connected
   // Falls back to manual pump control (dimmer) if scale unavailable
   while (!scale.isConnected()) {
     scale.init();
-    ledcWrite(pwmChannel, 0);  // Ensure pump is OFF while connecting
+    ledcWrite(pwmChannel, 255);  // TESTING MODE: Keep pump at max while connecting
     currentWeight = 0;
     if (shot.brewing) {
       setBrewingState(false);
@@ -155,60 +196,54 @@ void loop() {
   if (scale.newWeightAvailable()) {
     currentWeight = scale.getWeight();
 
-    if (DEBUG) {
-      Serial.print("Weight: ");
-      Serial.print(currentWeight, 1);
-      Serial.print("g | Offset: ");
-      Serial.println(shot.weightOffset, 1);
-    }
+    DEBUG_SCALE_PRINT("Weight: %.1f g | Offset: %.1f g", currentWeight, shot.weightOffset);
 
     // Update shot trajectory with new weight datapoint
     updateShotTrajectory(&shot, currentWeight);
   }
+  #else
+  // TESTING MODE: Skip scale connection and keep current weight at 0
+  currentWeight = 0;
+  #endif
 
   // ========================================================================
   // PUMP DIMMER CONTROL (Auto during shot, 100% when idle)
   // ========================================================================
 
-  // Read current encoder position for shot adjustment
+  
+  
   long encoderPosition = encoder.getCount();
   encoderAdjustment = constrain(encoderPosition, 0, 255);
-
-  int finalPwmValue = 0;
-
   if (!shot.brewing) {
     // IDLE STATE: Pump at full speed (100% = 255)
     finalPwmValue = 255;
-
-    // Reset encoder to neutral position when not brewing
-    if (encoderPosition != 0) {
-      encoder.setCount(0);
-      encoderAdjustment = 0;
-    }
+  } else if (shot.datapoints == 0) {
+    // No pressure data yet; start pump full power until first measurement.
+    finalPwmValue = 255;
+    DEBUG_ENCODER_PRINT("BREWING - waiting for pressure data, PWM: %d", finalPwmValue);
   } else {
-    // BREWING STATE: Auto-controlled but adjustable by encoder
-    // During shot, the pump is controlled automatically by shot logic
-    // but can be adjusted +/- by encoder for real-time fine-tuning
-
-    // Start with encoder adjustment (0-255 range)
-    // This allows operator to modulate pump during extraction
-    finalPwmValue = encoderAdjustment;
-
-    if (DEBUG) {
-      Serial.print("BREWING - Encoder adjustment: ");
-      Serial.print(encoderAdjustment);
-      Serial.print("/255 | PWM: ");
-      Serial.println(finalPwmValue);
-    }
+    // BREWING STATE: control pump power based on pressure error.
+    float goalPressure = shot.current_goal_pressure;
+    float pressureError = goalPressure - shot.pressure;
+    const float pressureKp = 35.0f; // proportional gain for pressure control
+    int pressurePwm = (int)round(pressureError * pressureKp + 128.0f);
+    finalPwmValue = constrain(pressurePwm, 0, 255);
+    DEBUG_ENCODER_PRINT("BREWING - target %.1f bar, current %.1f bar, error %.2f, PWM: %d",
+      goalPressure, shot.pressure, pressureError, finalPwmValue);
   }
+  
+
+  
+  DEBUG_ENCODER_PRINT("Encoder count: %ld | PWM output: %d", encoderPosition, finalPwmValue);
+  
+
+  if (!shot.brewing) {
+    DEBUG_ENCODER_PRINT("IDLE - Pump at 100%% (255) | Encoder: %ld", encoderPosition);
+  }
+  
 
   // Apply final PWM value to dimmer
   ledcWrite(pwmChannel, finalPwmValue);
-
-  if (DEBUG && !shot.brewing) {
-    Serial.print("IDLE - Pump at 100% (255) | Encoder: ");
-    Serial.println(encoderPosition);
-  }
 
   // ========================================================================
   // BUTTON AND SHOT STATE MANAGEMENT
@@ -216,6 +251,8 @@ void loop() {
 
   // Handle button state machine (debounced, machine-agnostic)
   handleButtonLogic();
+
+  printScalePressureStatus();
 
   // Monitor for maximum shot duration (safety timeout)
   handleMaxDurationReached(&shot);
