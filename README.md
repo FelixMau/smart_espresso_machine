@@ -1,5 +1,7 @@
 # smart espresso machine
-This is a more or less private project where I work on my Espresso machine to digitalise and IOT enable my espresso machine.
+This is a more or less private project where I work on my Espresso machine to digitalise and IOT enable my Dalla Corte Mini and maybe other machines in future too!
+
+The Goal here in opposite of [Gaggiuino Project](https://gaggiuino.github.io/#/?id=home) is to not replace the machines original controls but rather extend them. This way we dont have to mingle so much with high voltages, and enable the machine to be restoreable.
 
 **This project is on hold since I cannot afford printing another PCB at the moment**
 
