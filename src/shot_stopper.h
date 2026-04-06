@@ -187,7 +187,9 @@ void setBrewingState(bool brewing) {
     shot.shotTimer = 0;
     shot.datapoints = 0;
     scale.resetTimer();
+    delay(50); // Small delay to allow scale to process reset command
     scale.startTimer();
+    delay(50); // Small delay to allow scale to process start command
     if(AUTOTARE){
       scale.tare();
     }
