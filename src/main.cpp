@@ -5,6 +5,7 @@
 #include "shot_stopper.h"
 #include "AcaiaArduinoBLE.h"
 #include "webserver.h"
+#include "pid_controller.h"
 
 // ============================================================================
 // TESTING CONFIGURATION
@@ -50,6 +51,10 @@ const int TFT_BL = 2;          // Backlight PWM (future)
 
 ESP32Encoder encoder;
 int encoderAdjustment = 255;     // Encoder position (0-255 for PWM adjustment)
+
+// PID controller for pressure regulation
+// Gains: Kp=25, Ki=0.5, Kd=8 (tune as needed)
+PIDController pressurePID(25.0f, 0.5f, 8.0f);
 
 // ============================================================================
 // GLOBAL STATE
@@ -214,22 +219,21 @@ void loop() {
   
   long encoderPosition = encoder.getCount();
   encoderAdjustment = constrain(encoderPosition, 0, 255);
+
   if (!shot.brewing) {
     // IDLE STATE: Pump at full speed (100% = 255)
     finalPwmValue = 255;
   } else if (shot.datapoints == 0) {
-    // No pressure data yet; start pump full power until first measurement.
+    // Shot just started, no pressure data yet - reset PID and run full power
+    pressurePID.reset();
     finalPwmValue = 255;
     DEBUG_ENCODER_PRINT("BREWING - waiting for pressure data, PWM: %d", finalPwmValue);
   } else {
-    // BREWING STATE: control pump power based on pressure error.
+    // BREWING STATE: PID control for pressure regulation
     float goalPressure = shot.current_goal_pressure;
-    float pressureError = goalPressure - shot.pressure;
-    const float pressureKp = 35.0f; // proportional gain for pressure control
-    int pressurePwm = (int)round(pressureError * pressureKp + 128.0f);
-    finalPwmValue = constrain(pressurePwm, 0, 255);
-    DEBUG_ENCODER_PRINT("BREWING - target %.1f bar, current %.1f bar, error %.2f, PWM: %d",
-      goalPressure, shot.pressure, pressureError, finalPwmValue);
+    finalPwmValue = pressurePID.calculate(goalPressure, shot.pressure);
+    DEBUG_ENCODER_PRINT("BREWING - target %.1f bar, current %.1f bar, PWM: %d",
+      goalPressure, shot.pressure, finalPwmValue);
   }
   
 
