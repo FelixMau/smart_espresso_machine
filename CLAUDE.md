@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Store one lesson per file with a one-line summary at the top. Record corrections and confirmed approaches alike, including why they mattered. Don't save what the repo or chat history already records; update an existing note rather than creating a duplicate; delete notes that turn out to be wrong.
+Reflect on the previous sessions we've had together. Use subagents to identify core themes and lessons, and store them in .claude/ Make sure you know to reference files in folder .claude/ for future use.
+
 ## Quick Start Commands
 
 ```bash
@@ -20,100 +23,121 @@ platformio test
 
 ## Project Overview
 
-**Smart Espresso Machine** is an embedded IoT retrofit that automates espresso shot brewing on existing machines using:
-- **ESP32 microcontroller** with custom PCB integration
+**Smart Espresso Machine** is an embedded IoT retrofit that automates espresso shot brewing on existing machines (currently a Dalla Corte Mini) using:
+- **ESP32 microcontroller** (upesy_wroom) with custom PCB integration
 - **Bluetooth scale** (Acaia Lunar) for weight measurement via BLE
 - **Pressure sensor** (MPX5500, 0-16 bar) for extraction monitoring
 - **Opto-isolated button control** to automate pump and solenoid
-- **Rotary encoder** for manual pump power adjustment during brewing
-- **PWM dimmer control** (50 Hz) for pump speed regulation
-- **EEPROM storage** for learned calibration offsets
+- **PID-controlled pump dimmer** (PWM, 50 Hz) following configurable pressure profiles
+- **Rotary encoder** for manual pump power adjustment
+- **Async web dashboard** for live monitoring, control, and PID tuning over LAN
+- **EEPROM storage** for goal weight and learned calibration offsets
+
+Design philosophy (vs. e.g. Gaggiuino): **extend** the machine's original controls instead of replacing them — no high-voltage control logic replacement, machine stays restorable to stock.
 
 The system uses **linear regression** to predict when shots reach target weight and automatically stops extraction at the optimal moment.
 
 ## Architecture
 
-### Production Code Structure
+### Source Layout (everything lives in `src/`)
 
-**`src/main.cpp`** - Current entry point (37 lines)
-- Implements **encoder-to-PWM control** for manual pump power adjustment
-- Added due to PCB hardware failure requiring quick workaround
-- Full scale integration, button automation, and web monitoring are on hold
+| File | Lines | Purpose |
+|------|-------|---------|
+| `main.cpp` | ~450 | Entry point: setup, FreeRTOS tasks (control + scale), WiFi watchdog loop |
+| `shot_stopper.h` | ~420 | Core brewing logic: `Shot` struct, button state machine, regression, EEPROM learning |
+| `webserver.h` | ~290 | Async REST API (`/state`, start/stop, PID tuning, pressure profiles, shot history) |
+| `dashboard.h` | ~340 | Embedded single-page dashboard (PROGMEM HTML, Chart.js from CDN, polls `/state` every 500 ms) |
+| `pid_controller.h` | ~130 | PID class for pressure control (anti-windup, output floor to prevent pump shutoff) |
+| `shot_history.h` | ~95 | RAM-only ring buffer of last 5 shots, downsampled to 100 points each |
+| `debug.h` | ~90 | Category-based serial debug macros (`DEBUG_SHOT_PRINT`, `DEBUG_SCALE_PRINT`, ...) |
+| `secrets.h` | 1 | WiFi credentials (`ssid`, `password`) — must NOT be committed |
+| `on_hold.h` | ~110 | Legacy single-loop implementation, kept for reference only; not compiled |
 
-**`test/on_hold.h`** - Previous complete implementation (111 lines)
-- **Full-featured version** with BLE scale, button logic, shot automation, and web server
-- Superseded by current main.cpp encoder workaround due to hardware issues
-- Contains the integration pattern needed to restore full automation
-- Can be referenced when fixing the PCB and restoring automation features
+### FreeRTOS Task Structure (main.cpp)
 
-**`test/*.h`** - Production-ready modular libraries
-- `shot_stopper.h` (~400 lines) - Core brewing logic and automation
-- `webserver.h` (~186 lines) - Async REST API and web monitoring
-- `SuperMon.h` (~114 lines) - Embedded HTML/CSS/JS dashboard
+- **controlTask** (core 1, priority 2, ~50 ms cadence): scale-data consumption, shot trajectory updates, PID pump control, button state machine, shot end detection, EEPROM learning. Never blocks on BLE or HTTP.
+- **scaleTask** (core 1, priority 1, ~20 ms cadence): owns ALL BLE/scale calls (init with 10 s scan, heartbeat, weight polling, tare/timer commands). 5 s backoff between failed connect attempts because BLE scanning and WiFi share the 2.4 GHz radio.
+- **loop()** (default loopTask): WiFi watchdog only — reconnects every 15 s and starts the web server late if WiFi came up after boot.
+- **AsyncTCP task** (core 0): HTTP handlers. They only set `volatile` request flags (`webStartRequest` etc.) consumed by controlTask — handlers never touch scale/BLE/GPIO directly.
+
+Cross-task communication is via `volatile` flags declared in shot_stopper.h / webserver.h (`scaleConnected`, `scaleNewWeight`, `scaleTareRequest`, `webStartRequest`, `webStopRequest`, `webResetRequest`, ...).
+
+`TESTING_MODE_NO_SCALE` in main.cpp disables BLE entirely for bench testing without the scale.
 
 ### Core Data Structure: `struct Shot` (shot_stopper.h)
 
 Central state object tracking:
-- Brew timing (`shotTimer`, `expected_end_s`)
-- Weight measurements (`weight[]`, `time_s[]`, `datapoints`)
-- Pressure readings and control goals
-- User parameters (`goalWeight`, `weightOffset`)
-- Brewing status flags and end reason (`ENDTYPE::WEIGHT`, `ENDTYPE::TIME`, etc.)
+- Brew timing (`shot_timer`, `expected_end_s`, `end_s`)
+- Weight measurements (`weight[1000]`, `time_s[1000]`, `datapoints`)
+- Pressure readings (`pressure`, `peak_pressure`) and goals (`current_goal_pressure`, profiles)
+- User parameters (`goal_weight`, `weight_offset`)
+- Status (`brewing`, `pump_pwm`) and end reason (`ENDTYPE`: `BUTTON`, `WEIGHT`, `TIME`, `WEB`, `UNDEF`)
+
+A global `Shot shot` instance is shared across modules.
 
 ### Key Algorithms
 
 **Linear Regression Prediction** (shot_stopper.h:calculateEndTime)
-- Fits line to last N=10 weight-vs-time datapoints
-- Predicts: `expected_end_s = (goalWeight - weightOffset - b) / m`
-- Only calculates after 10+ measurements to avoid erratic predictions
+- Fits line to last `datapoints_trend_line` (10) weight-vs-time datapoints
+- Predicts: `expected_end_s = (goal_weight - weight_offset - b) / m`
+- Only calculates after 10+ measurements and weight > 10 g to avoid erratic predictions
 - Enables stopping shots before over-extraction
+
+**PID Pressure Control** (pid_controller.h + main.cpp:controlIteration)
+- During a shot, pump PWM = `pressurePID.calculate(shot.current_goal_pressure, shot.pressure)`
+- Default gains Kp=25, Ki=0.5, Kd=8; live-tunable via web (`/set_pid`)
+- Output floor prevents pump shutoff; anti-windup on integral term
+- Idle state: pump at 100 % (PWM 255)
+
+**Pressure Profiles** (shot_stopper.h:updateShotTrajectory)
+- Two goal lists, up to `MAX_PRESSURE_GOALS` (8) each:
+  - **By time**: seconds from shot start (default: 2 bar @ 0 s → 9 bar @ 5 s → 6 bar @ 20 s)
+  - **By time-left**: overrides based on predicted remaining time (default: 4 bar for last 5 s)
+- Set via web as comma lists; negative times encode "time left"
 
 **Button State Machine** (shot_stopper.h:handleButtonLogic)
 - Four states: IDLE → PRESSED → [HELD] → RELEASED
-- Debouncing via majority voting (8-31 sample array, 40-155ms window)
-- Supports two machine types:
-  - **Momentary switches** (GS3 AV): Press toggles brew on/off
-  - **Latching switches** (Linea Mini): Press starts, system controls via output pin after 3s
-- Handles reed switch alternative input
+- Debouncing via 8-sample majority array read every 5 ms
+- Supports two machine types (`MOMENTARY` define):
+  - **Momentary switches** (GS3 AV): press toggles brew on/off; system pulses OUT for 1 s to stop
+  - **Latching switches** (Linea Mini): press starts, system latches OUT after `MIN_SHOT_DURATION_S`
+- `REEDSWITCH` alternative input supported
 
 **EEPROM Auto-Learning** (shot_stopper.h:detectShotError)
-- Post-shot analysis 3 seconds after completion
-- If measured weight error < 5g from goal: learns offset for next shot
-- Saves offset to EEPROM address 1
-- Improves accuracy over multiple shots; rejects outliers
+- Post-shot analysis `DRIP_DELAY_S` (3 s) after completion
+- If measured weight error ≤ `MAX_OFFSET` (5 g) from goal: learns offset for next shot, saves to EEPROM
+- Larger errors are rejected as outliers
 
-**Pressure Profile Control** (shot_stopper.h)
-- Two modes: time-based (from shot start) and time-remaining (countdown)
-- Up to 8 pressure goals per mode
-- Interpolated control between goals
+### Hardware Pin Configuration
 
-### Hardware Pin Configuration (shot_stopper.h)
+Defined in shot_stopper.h and main.cpp:
 
 ```cpp
-#define IN 13              // Button input (active low)
-#define OUT 22             // Button output (opto-coupled to machine)
-#define PRESSURE_PIN 33    // ADC input for pressure sensor
-                           // Conversion: ADC → 0-16 bar
-                           // Formula: (V - 0.4) * (16 / 2.9)
+#define BUTTON_READ_PIN 34   // Button input (active low; REED_IN 25 if REEDSWITCH)
+#define OUT 22               // Button output (opto-coupled to machine)
+#define PRESSURE_PIN 32      // ADC input, MPX5500: P = (V - 0.4) * 16 / (3.3 - 0.4) bar
+const int DIMMER_PIN = 5;    // Pump dimmer PWM (50 Hz, 8-bit, LEDC channel 0)
+// Encoder: GPIO 23 (A), GPIO 25 (B), half-quad mode
+// Display SPI (reserved, not yet driven): CLK 18, MOSI 19, MISO 21, CS 17, DC 16, RST 14, BL 2
 ```
 
-Encoder pins: GPIO 23 (A), GPIO 25 (B)
-Dimmer PWM: GPIO 5 (50 Hz, 8-bit resolution)
+Note: `DIMMER_PIN` is `extern` in shot_stopper.h and defined in main.cpp — keep them consistent.
 
-**Alternative ESP32S3 pins available via `#ifdef` directives**
+### Web Server (webserver.h)
 
-### Web Server Features (webserver.h)
+WiFi connects with a 15 s boot timeout; the firmware runs fine without it. REST endpoints:
 
-REST endpoints for monitoring and control:
-- `GET /` - Serve SuperMon.h dashboard
-- `GET /weight`, `/pressure`, `/shottime` - Real-time data
-- `GET /set_goal_weight?value=XX` - Update target weight
-- `GET /set_pressure_profile?times=T1,T2&pressures=P1,P2` - Configure pressure goals
+- `GET /` — dashboard page (dashboard.h, PROGMEM)
+- `GET /state` — single JSON with everything the dashboard polls: brewing, scale status, weight, pressure, PID terms, profile, pump PWM
+- `GET /start_shot`, `/stop_shot` — presses the machine button via controlTask
+- `GET /reset_shot` — ends the shot on ESP/scale only, machine untouched
+- `GET /set_pid?kp=&ki=&kd=` — live PID tuning (each gain optional)
+- `GET /set_goal_weight?value=` (10–200 g, persisted to EEPROM)
+- `GET /set_weight_offset?value=` (0–5 g, persisted to EEPROM)
+- `GET /set_pressure_profile?times=T1,T2&pressures=P1,P2` — positive T = from start, negative T = time-left override
+- `GET /shots` — history list (newest first), `GET /shot?id=N` — downsampled trajectory
 
-Web dashboard provides:
-- Start/Stop shot buttons
-- Weight offset slider (0-5g) for manual calibration
-- Real-time data table with live updates (200ms refresh)
+Dashboard features: live tiles, start/stop/reset, PID sliders, goal weight/offset editors, pressure profile editor, live Chart.js plots, shot history comparison. Chart.js loads from CDN, so the *client browser* needs internet; the ESP does not.
 
 ## Configuration and Customization
 
@@ -121,153 +145,94 @@ Web dashboard provides:
 
 ```ini
 [env:upesy_wroom]
-platform = espressif32
+platform = espressif32@6.13.0
 board = upesy_wroom
 framework = arduino
 build_flags = -std=c++17
 ```
 
-Supports feature toggling via `#define` in shot_stopper.h:
+### Feature Toggles (shot_stopper.h)
 
 ```cpp
-#define MOMENTARY true        // Machine button type (GS3 momentary vs Linea Mini latching)
-#define REEDSWITCH false      // Use reed switch detection instead of button input
-#define AUTOTARE true         // Auto-tare scale at shot start
-#define MIN_SHOT_DURATION_S 3 // Reject shots shorter than 3 seconds (prevent accidental triggers)
+#define MOMENTARY true         // GS3-style momentary vs Linea Mini latching switch
+#define REEDSWITCH false       // Reed switch detection instead of button input
+#define AUTOTARE true          // Auto-tare scale at shot start
+#define MIN_SHOT_DURATION_S 3  // Ignore flushes shorter than this
 #define MAX_SHOT_DURATION_S 50 // Safety timeout to prevent stuck pump
-#define N 10                  // Datapoints for linear regression (accuracy vs latency)
+#define datapoints_trend_line 10 // Regression window (accuracy vs latency)
 ```
+
+Debug output is controlled per category in debug.h (`DEBUG_ENABLED`, `DEBUG_SHOT`, `DEBUG_SCALE`, ...).
 
 ### EEPROM Storage
 
-- **Address 0**: Goal weight (uint8_t, 0-255g)
-- **Address 1**: Weight offset × 10 (stores 0-25.5g, recall with `/10`)
+- **Address 0** (`WEIGHT_ADDR`): Goal weight (uint8_t; validated to 10–200 g on boot, default 36 g)
+- **Address 1** (`OFFSET_ADDR`): Weight offset × 10 (0–25.5 g; validated ≤ MAX_OFFSET, default 1.5 g)
 
-Clear EEPROM by writing 255 to both addresses.
+### WiFi Credentials
 
-### WiFi (Optional)
-
-Create `test/secrets.h` for WiFi credentials:
+`src/secrets.h`:
 ```cpp
-#define LOCAL_SSID "your_ssid"
-#define LOCAL_PASS "your_password"
+#define ssid "your_ssid"
+#define password "your_password"
 ```
-
-## Integration Path
-
-### Current State (Temporary Workaround)
-- **src/main.cpp**: Encoder-to-PWM control only (37 lines)
-  - Added as quick fix due to PCB hardware failure
-  - Allows manual pump control while automation is suspended
-  - Missing: BLE scale, button automation, shot monitoring, web server
-
-### Previous Full Implementation
-- **test/on_hold.h**: Complete, working integration (111 lines)
-  - Demonstrates correct setup() initialization pattern
-  - Shows loop() structure for scale polling, button handling, and shot monitoring
-  - Includes WiFi/web server integration
-  - Reference this when restoring full automation after PCB fix
-
-### To Restore Full Automation (Post-PCB Fix)
-1. Reference the setup() pattern from on_hold.h:
-   - CPU frequency, serial, EEPROM initialization
-   - GPIO pins (button input, output, dimmer)
-   - BLE initialization for scale connection
-   - WiFi and web server startup
-2. Reference the loop() pattern from on_hold.h:
-   - Scale connection check with fallback (pump ON)
-   - Scale heartbeat and weight polling
-   - Shot trajectory updates and button handling
-   - Shot end detection and error learning
-3. **Integrate encoder control** from current main.cpp:
-   - Encoder initialization in setup()
-   - Read encoder position in loop()
-   - Map encoder position to PWM output
-4. Test full integration on hardware:
-   - Verify scale BLE connection stability
-   - Test button automation (momentary vs latching)
-   - Validate pressure readings and profiles
-   - Confirm EEPROM learning and persistence
+This file contains real credentials — keep it out of version control (.gitignore) and share a `secrets.h.example` instead.
 
 ## BLE Scale Integration (Acaia Lunar)
 
-Critical polling pattern - **must call `newWeightAvailable()` continuously**:
+All scale access is centralized in `scaleTask` (main.cpp). Critical polling pattern — **`newWeightAvailable()` must be called continuously** or the connection goes stale:
 
 ```cpp
-if (scale.heartbeatRequired()) {
-  scale.heartbeat();  // Keep BLE alive every ~30s
-}
+if (scale.heartbeatRequired()) scale.heartbeat(); // keep BLE alive ~30 s
 if (scale.newWeightAvailable()) {
-  weight = scale.getWeight();  // Fetch latest
-  // Without continuous polling, data goes stale
+  currentWeight = scale.getWeight();
+  scaleNewWeight = true;
 }
 ```
 
-Missing `newWeightAvailable()` calls in loop → scale connection drops.
+Other tasks never call the scale directly — they set `scaleTareRequest` / `scaleStartSequenceRequest` / `scaleStopTimerRequest` flags. If the scale disconnects mid-shot, controlTask ends the shot without touching the machine button.
 
 ## Testing and Debugging
 
 ### Serial Output (9600 baud)
-- Encoder position and PWM values
+- Startup sequence, dashboard URL (re-printed every 10 s)
+- Encoder position and PWM values, PID terms
 - Button press/release transitions
 - Shot lifecycle events (start/stop, end reason)
 - Weight/time/pressure readings
 - EEPROM offset learning events
 
-### Compilation Variants
-Code uses `#ifdef` directives for:
-- Board variants (ESP32S3 vs generic ESP32)
-- Machine types (momentary vs latching buttons, reed switch alternative)
-- Optional features (pressure control, web interface)
+### Bench Testing Without Hardware
+- `TESTING_MODE_NO_SCALE true` (main.cpp) fakes a connected scale so the dashboard start button works without BLE.
 
-### Unit Tests
-```bash
-platformio test
-```
-PlatformIO framework supports native unit tests.
+### Header Guard Gotcha
+webserver.h intentionally uses `ESPRESSO_WEBSERVER_H` as its guard — `WEBSERVER_H` would make ESPAsyncWebServer think the core WebServer library is present and skip defining `HTTP_GET` etc.
 
 ## Hardware and PCB Status
 
-- **Nearly production-ready PCB** in `pcb/` directory (KiCad 6.0)
-- **Status**: Routing complete, awaiting second opinion before manufacturing
-- **Features**: Proper opto-coupler footprints, power connections, on/off switch
-- **Known limitation**: PWM dimmer lacks zero-crossing detection (currently basic 50Hz PWM)
+- PCB in `pcb/` directory (KiCad), routing complete with opto-coupler footprints, power connections, on/off switch, display interface
+- **Status**: On hold — waiting to afford the next PCB print run
+- **Known limitation**: PWM dimmer lacks zero-crossing detection (currently basic 50 Hz PWM)
 
-Recent improvements:
-- Fixed opto-coupler footprints
-- Added on/off switch for power management
-- Corrected routing issues from initial prototype
+## Dependencies (platformio.ini lib_deps)
 
-## Dependencies
+| Library | Purpose |
+|---------|---------|
+| tatemazer/AcaiaArduinoBLE | BLE scale communication (Acaia Lunar) |
+| arduino-libraries/ArduinoBLE @^1.4.0 | BLE stack |
+| bblanchon/ArduinoJson @^7.4.1 | JSON serialization for web API |
+| madhephaestus/ESP32Encoder @^0.11.8 | Quadrature encoder |
+| me-no-dev/AsyncTCP @^1.1.1 | Async TCP for web server |
+| me-no-dev/ESPAsyncWebServer (git) | Async web server |
 
-| Library | Purpose | Notes |
-|---------|---------|-------|
-| AcaiaArduinoBLE | BLE scale communication | Custom library for Acaia Lunar |
-| ArduinoBLE | BLE peripheral | v1.4.0+ |
-| ArduinoJson | JSON serialization | v7.4.1+ for web API |
-| rbdimmerESP32 | Dimmer control | Custom, zero-crossing ready |
-| ESP32Encoder | Quadrature encoder | v0.11.8+ |
-| ArduinoEEPROM | Persistent storage | Standard library |
-| WiFi.h | WiFi connectivity | Standard (optional) |
-| AsyncTCP/ESPAsyncWebServer | Web server | Standard (optional) |
-
-## Pressure Sensor
-
-**Sensor**: MPX5500, 0-16 bar absolute pressure
-
-**Conversion formula** (shot_stopper.h:updatePressureSensor):
-```
-Voltage = (ADC_value / 4095) * 3.3V
-Pressure = (Voltage - 0.4V) * (16 bar / 2.9V)
-```
-
-Readings available in real-time during brewing and stored in Shot.pressure.
+Pump dimming uses the ESP32 LEDC peripheral directly (no dimmer library).
 
 ## Important Design Patterns
 
-1. **Modular headers**: Core logic in .h files allows incremental testing and development without full firmware compilation
-2. **State machine buttons**: Debounced, machine-agnostic logic handles both momentary and latching switches
-3. **Auto-learning calibration**: Offset improves after each shot; rejected outliers prevent regression errors
-4. **Predictive shot stopping**: Linear regression enables anticipatory stopping (not reactive)
-5. **Pressure profiles**: Flexible system allows per-shot pressure curves for different brewing techniques
-6. **EEPROM persistence**: Learned offsets and goal weights survive power cycles
+1. **Task isolation**: BLE, control loop, and HTTP live in separate FreeRTOS tasks; a missing scale or busy web client can never stall brewing or pump control
+2. **Flag-based messaging**: `volatile` request flags instead of locks for cross-task commands; only shot history uses a semaphore
+3. **State machine buttons**: debounced, machine-agnostic logic handles momentary and latching switches
+4. **Auto-learning calibration**: offset improves after each shot; outliers rejected
+5. **Predictive shot stopping**: linear regression enables anticipatory (not reactive) stopping
+6. **Pressure profiles + PID**: per-shot pressure curves, live-tunable gains
+7. **Graceful degradation**: boots and brews without WiFi, without scale (pump stays at 100 %), and reconnects both in the background

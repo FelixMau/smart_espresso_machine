@@ -4,7 +4,9 @@
       "Bash(python -m platformio run:*)",
       "Bash(platformio run:*)",
       "Skill(dataviz)",
-      "Skill(dataviz:*)"
+      "Skill(dataviz:*)",
+      "Bash(platformio run *)",
+      "Bash(git -C /home/felix/projects/smart_espresso_machine log --oneline -15)"
     ],
     "deny": [],
     "ask": []
