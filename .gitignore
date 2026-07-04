@@ -6,3 +6,7 @@
 nul
 .claude/
 pitch_kaffeemacher.md
+
+# WiFi credentials — never commit (use secrets.h.example as template)
+src/secrets.h
+test/secrets.h
