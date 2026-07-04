@@ -86,19 +86,19 @@ void setup() {
   EEPROM.begin(EEPROM_SIZE);
 
   // Retrieve stored goal weight and offset from EEPROM
-  shot.goalWeight = EEPROM.read(WEIGHT_ADDR);
-  shot.weightOffset = EEPROM.read(OFFSET_ADDR) / 10.0;
+  shot.goal_weight = EEPROM.read(WEIGHT_ADDR);
+  shot.weight_offset = EEPROM.read(OFFSET_ADDR) / 10.0;
 
-  DEBUG_STARTUP_PRINT("Goal Weight retrieved: %.0f g", shot.goalWeight);
-  DEBUG_STARTUP_PRINT("Offset retrieved: %.1f g", shot.weightOffset);
+  DEBUG_STARTUP_PRINT("Goal Weight retrieved: %.0f g", shot.goal_weight);
+  DEBUG_STARTUP_PRINT("Offset retrieved: %.1f g", shot.weight_offset);
 
   // Validate EEPROM values; use defaults if unreasonable
-  if ((shot.goalWeight < 10) || (shot.goalWeight > 200)) {
-    shot.goalWeight = 36;
+  if ((shot.goal_weight < 10) || (shot.goal_weight > 200)) {
+    shot.goal_weight = 36;
     DEBUG_STARTUP_PRINT("Goal Weight out of range, set to default: 36 g");
   }
-  if (shot.weightOffset > MAX_OFFSET) {
-    shot.weightOffset = 1.5;
+  if (shot.weight_offset > MAX_OFFSET) {
+    shot.weight_offset = 1.5;
     DEBUG_STARTUP_PRINT("Offset out of range, set to default: 1.5 g");
   }
 
@@ -230,7 +230,7 @@ void controlIteration() {
   if (scale.newWeightAvailable()) {
     currentWeight = scale.getWeight();
 
-    DEBUG_SCALE_PRINT("Weight: %.1f g | Offset: %.1f g", currentWeight, shot.weightOffset);
+    DEBUG_SCALE_PRINT("Weight: %.1f g | Offset: %.1f g", currentWeight, shot.weight_offset);
 
     // Update shot trajectory with new weight datapoint
     updateShotTrajectory(&shot, currentWeight);
@@ -327,7 +327,7 @@ void controlIteration() {
 
   // Apply final PWM value to dimmer and publish it for the web dashboard
   ledcWrite(pwmChannel, finalPwmValue);
-  shot.pumpPwm = finalPwmValue;
+  shot.pump_pwm = finalPwmValue;
 
   // ========================================================================
   // BUTTON AND SHOT STATE MANAGEMENT

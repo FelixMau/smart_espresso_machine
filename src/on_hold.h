@@ -62,8 +62,8 @@ void setup() {
   // Remove all RBDimmer logic and frequency detection
   // Instead, just set the dimmer pin LOW (off) initially
   digitalWrite(DIMMER_PIN, HIGH);
-  shot.goalWeight = read_goalWeight;
-  shot.weightOffset = read_weightOffset;
+  shot.goal_weight = read_goalWeight;
+  shot.weight_offset = read_weightOffset;
 
   startwifi(); // Start WiFi connection
 }

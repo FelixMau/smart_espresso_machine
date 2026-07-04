@@ -77,7 +77,7 @@ ButtonState buttonState = IDLE;
 
 struct Shot {
   float start_timestamp_s;
-  float shotTimer;
+  float shot_timer;
   float end_s;
   float expected_end_s;
   float weight[1000];
@@ -87,19 +87,19 @@ struct Shot {
   ENDTYPE end;
   float pressure;
   // Pressure goals...
-  PressureGoalByTime pressureGoalByTime[MAX_PRESSURE_GOALS];
-  int numPressureGoalsByTime;
-  PressureGoalByTimeLeft pressureGoalByTimeLeft[MAX_PRESSURE_GOALS];
-  int numPressureGoalsByTimeLeft;
+  PressureGoalByTime pressure_goal_by_time[MAX_PRESSURE_GOALS];
+  int num_pressure_goals_by_time;
+  PressureGoalByTimeLeft pressure_goal_by_time_left[MAX_PRESSURE_GOALS];
+  int num_pressure_goals_by_time_left;
   float current_goal_pressure;
 
   // Add these:
-  float goalWeight;
-  float weightOffset;
+  float goal_weight;
+  float weight_offset;
 
   // Published for web dashboard monitoring
-  int pumpPwm;         // Last PWM value written to the dimmer (0-255)
-  float peakPressure;  // Highest pressure seen during the current shot
+  int pump_pwm;         // Last PWM value written to the dimmer (0-255)
+  float peak_pressure;  // Highest pressure seen during the current shot
 };
 
 //Initialize shot
@@ -179,7 +179,7 @@ void calculateEndTime(Shot* s) {
     b = meanY - m * meanX;
 
     // Calculate time at which goal weight will be reached (x = (y-b)/m)
-    s->expected_end_s = (s->goalWeight - s->weightOffset - b) / m;
+    s->expected_end_s = (s->goal_weight - s->weight_offset - b) / m;
   }
 }
 
@@ -187,9 +187,9 @@ void setBrewingState(bool brewing) {
   if(brewing){
     DEBUG_SHOT_PRINT("Shot started");
     shot.start_timestamp_s = seconds_f();
-    shot.shotTimer = 0;
+    shot.shot_timer = 0;
     shot.datapoints = 0;
-    shot.peakPressure = 0;
+    shot.peak_pressure = 0;
     scale.resetTimer();
     delay(50); // Small delay to allow scale to process reset command
     scale.startTimer();
@@ -224,7 +224,7 @@ void setBrewingState(bool brewing) {
     // shot overwrites it. Skip flushes shorter than MIN_SHOT_DURATION_S.
     if (shot.end_s >= MIN_SHOT_DURATION_S) {
       recordShot(shot.time_s, shot.weight, shot.datapoints,
-                 shot.end_s, shot.peakPressure, (int)shot.end);
+                 shot.end_s, shot.peak_pressure, (int)shot.end);
     }
 
     scale.stopTimer();
@@ -251,12 +251,12 @@ void setBrewingState(bool brewing) {
 void updateShotTrajectory(Shot* shot, float currentWeight) {
   if (shot->brewing) {
     updatePressureSensor(shot);
-    if (shot->pressure > shot->peakPressure) {
-      shot->peakPressure = shot->pressure;
+    if (shot->pressure > shot->peak_pressure) {
+      shot->peak_pressure = shot->pressure;
     }
     shot->time_s[shot->datapoints] = seconds_f() - shot->start_timestamp_s;
     shot->weight[shot->datapoints] = currentWeight;
-    shot->shotTimer = shot->time_s[shot->datapoints];
+    shot->shot_timer = shot->time_s[shot->datapoints];
     shot->datapoints++;
 
     // Get the likely end time of the shot
@@ -265,26 +265,26 @@ void updateShotTrajectory(Shot* shot, float currentWeight) {
     // --- Pressure goal logic ---
     float goalPressure = 0.0f;
     // 1. Find the latest pressure goal by time (<= current time)
-    for (int i = 0; i < shot->numPressureGoalsByTime; ++i) {
-      if (shot->shotTimer >= shot->pressureGoalByTime[i].time_s) {
-        goalPressure = shot->pressureGoalByTime[i].pressure;
+    for (int i = 0; i < shot->num_pressure_goals_by_time; ++i) {
+      if (shot->shot_timer >= shot->pressure_goal_by_time[i].time_s) {
+        goalPressure = shot->pressure_goal_by_time[i].pressure;
       }
     }
     // 2. Check for override by time left
-    float timeLeft = shot->expected_end_s - shot->shotTimer;
-    for (int i = 0; i < shot->numPressureGoalsByTimeLeft; ++i) {
-      if (timeLeft <= shot->pressureGoalByTimeLeft[i].time_left_s) {
-        goalPressure = shot->pressureGoalByTimeLeft[i].pressure;
+    float timeLeft = shot->expected_end_s - shot->shot_timer;
+    for (int i = 0; i < shot->num_pressure_goals_by_time_left; ++i) {
+      if (timeLeft <= shot->pressure_goal_by_time_left[i].time_left_s) {
+        goalPressure = shot->pressure_goal_by_time_left[i].pressure;
       }
     }
     shot->current_goal_pressure = goalPressure;
 
     // Detailed shot trajectory logging
     DEBUG_SHOT_PRINT("Time: %.1f s | Weight: %.1f g | Expected end: %.1f s | Goal weight: %.0f g | Pump: %s | Goal pressure: %.1f bar | Current pressure: %.1f bar",
-      shot->shotTimer,
+      shot->shot_timer,
       shot->weight[shot->datapoints - 1],
       shot->expected_end_s,
-      shot->goalWeight,
+      shot->goal_weight,
       (shot->pressure < goalPressure) ? "ON" : "OFF",
       goalPressure,
       shot->pressure
@@ -293,9 +293,9 @@ void updateShotTrajectory(Shot* shot, float currentWeight) {
 }
 
 void handleMaxDurationReached(Shot* shot) {
-  if (shot->brewing && shot->shotTimer > MAX_SHOT_DURATION_S) {
+  if (shot->brewing && shot->shot_timer > MAX_SHOT_DURATION_S) {
     shot->brewing = false;
-    DEBUG_SHOT_PRINT("Max brew duration reached (%.1f s > %.1f s)", shot->shotTimer, MAX_SHOT_DURATION_S);
+    DEBUG_SHOT_PRINT("Max brew duration reached (%.1f s > %.1f s)", shot->shot_timer, MAX_SHOT_DURATION_S);
     shot->end = ENDTYPE::TIME;
     setBrewingState(shot->brewing);
   }
@@ -303,9 +303,9 @@ void handleMaxDurationReached(Shot* shot) {
 
 void handleShotEnd(Shot* shot, float currentWeight) {
   if (shot->brewing 
-      && shot->shotTimer >= shot->expected_end_s 
-      && shot->shotTimer > MIN_SHOT_DURATION_S) {
-    DEBUG_SHOT_PRINT("Goal weight achieved (%.1f g >= %.1f g - %.1f g offset)", currentWeight, shot->goalWeight, shot->weightOffset);
+      && shot->shot_timer >= shot->expected_end_s 
+      && shot->shot_timer > MIN_SHOT_DURATION_S) {
+    DEBUG_SHOT_PRINT("Goal weight achieved (%.1f g >= %.1f g - %.1f g offset)", currentWeight, shot->goal_weight, shot->weight_offset);
     shot->brewing = false;
     shot->end = ENDTYPE::WEIGHT;
     setBrewingState(shot->brewing);
@@ -315,21 +315,21 @@ void handleShotEnd(Shot* shot, float currentWeight) {
 void detectShotError(Shot* shot, float currentWeight) {
   if (shot->start_timestamp_s
       && shot->end_s
-      && currentWeight >= (shot->goalWeight - shot->weightOffset)
+      && currentWeight >= (shot->goal_weight - shot->weight_offset)
       && seconds_f() > shot->start_timestamp_s + shot->end_s + DRIP_DELAY_S) {
     shot->start_timestamp_s = 0;
     shot->end_s = 0;
 
-    if (abs(currentWeight - shot->goalWeight + shot->weightOffset) > MAX_OFFSET) {
+    if (abs(currentWeight - shot->goal_weight + shot->weight_offset) > MAX_OFFSET) {
       DEBUG_SHOT_PRINT("Weight error detected: final=%.1f g, goal=%.0f g, offset=%.1f g - Error too large, offset unchanged",
-        currentWeight, shot->goalWeight, shot->weightOffset);
+        currentWeight, shot->goal_weight, shot->weight_offset);
     } else {
-      float newOffset = shot->weightOffset + currentWeight - shot->goalWeight;
+      float newOffset = shot->weight_offset + currentWeight - shot->goal_weight;
       DEBUG_SHOT_PRINT("Weight correction: final=%.1f g, goal=%.0f g, old_offset=%.1f g → new_offset=%.1f g",
-        currentWeight, shot->goalWeight, shot->weightOffset, newOffset);
-      shot->weightOffset = newOffset;
+        currentWeight, shot->goal_weight, shot->weight_offset, newOffset);
+      shot->weight_offset = newOffset;
 
-      EEPROM.write(OFFSET_ADDR, (uint8_t)(shot->weightOffset * 10)); // 1 byte, 0-255
+      EEPROM.write(OFFSET_ADDR, (uint8_t)(shot->weight_offset * 10)); // 1 byte, 0-255
       EEPROM.commit();
       DEBUG_SHOT_PRINT("New offset saved to EEPROM");
     }
@@ -384,7 +384,7 @@ void handleButtonLogic() {
           shot.end = ENDTYPE::BUTTON;
         }
         setBrewingState(shot.brewing);
-      } else if (!MOMENTARY && shot.brewing && !buttonLatched && (shot.shotTimer > MIN_SHOT_DURATION_S)) {
+      } else if (!MOMENTARY && shot.brewing && !buttonLatched && (shot.shot_timer > MIN_SHOT_DURATION_S)) {
         DEBUG_BUTTON_PRINT("Button latched");
         buttonState = HELD;
         buttonLatched = true;

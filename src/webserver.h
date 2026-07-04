@@ -82,14 +82,14 @@ void initializeServer(Shot* s, PIDController* pid) {
   server.on("/state", HTTP_GET, [](AsyncWebServerRequest* req) {
     JsonDocument doc;
     doc["brewing"] = shot.brewing;
-    doc["shotTimer"] = shot.shotTimer;
+    doc["shotTimer"] = shot.shot_timer;
     doc["expectedEnd"] = shot.expected_end_s;
     doc["weight"] = currentWeight;
-    doc["goalWeight"] = shot.goalWeight;
-    doc["weightOffset"] = shot.weightOffset;
+    doc["goalWeight"] = shot.goal_weight;
+    doc["weightOffset"] = shot.weight_offset;
     doc["pressure"] = shot.pressure;
     doc["goalPressure"] = shot.current_goal_pressure;
-    doc["pumpPwm"] = shot.pumpPwm;
+    doc["pumpPwm"] = shot.pump_pwm;
 
     JsonObject pid = doc["pid"].to<JsonObject>();
     if (webPid) {
@@ -106,13 +106,13 @@ void initializeServer(Shot* s, PIDController* pid) {
     // as negative times (same convention as /set_pressure_profile input)
     JsonArray times = doc["profileTimes"].to<JsonArray>();
     JsonArray pressures = doc["profilePressures"].to<JsonArray>();
-    for (int i = 0; i < shot.numPressureGoalsByTime; i++) {
-      times.add(shot.pressureGoalByTime[i].time_s);
-      pressures.add(shot.pressureGoalByTime[i].pressure);
+    for (int i = 0; i < shot.num_pressure_goals_by_time; i++) {
+      times.add(shot.pressure_goal_by_time[i].time_s);
+      pressures.add(shot.pressure_goal_by_time[i].pressure);
     }
-    for (int i = 0; i < shot.numPressureGoalsByTimeLeft; i++) {
-      times.add(-shot.pressureGoalByTimeLeft[i].time_left_s);
-      pressures.add(shot.pressureGoalByTimeLeft[i].pressure);
+    for (int i = 0; i < shot.num_pressure_goals_by_time_left; i++) {
+      times.add(-shot.pressure_goal_by_time_left[i].time_left_s);
+      pressures.add(shot.pressure_goal_by_time_left[i].pressure);
     }
 
     AsyncResponseStream* res = req->beginResponseStream("application/json");
@@ -151,7 +151,7 @@ void initializeServer(Shot* s, PIDController* pid) {
     if (req->hasParam("value")) {
       float gw = req->getParam("value")->value().toFloat();
       if (gw >= 10 && gw <= 200) {
-        shot.goalWeight = gw;
+        shot.goal_weight = gw;
         EEPROM.write(WEIGHT_ADDR, (uint8_t)gw);
         EEPROM.commit();
       }
@@ -163,7 +163,7 @@ void initializeServer(Shot* s, PIDController* pid) {
     if (req->hasParam("value")) {
       float off = req->getParam("value")->value().toFloat();
       if (off >= 0 && off <= MAX_OFFSET) {
-        shot.weightOffset = off;
+        shot.weight_offset = off;
         EEPROM.write(OFFSET_ADDR, (uint8_t)(off * 10));
         EEPROM.commit();
       }
@@ -207,12 +207,12 @@ void initializeServer(Shot* s, PIDController* pid) {
         }
       }
 
-      shot.numPressureGoalsByTime = 0;
-      shot.numPressureGoalsByTimeLeft = 0;
-      memcpy(shot.pressureGoalByTime, byTime, sizeof(byTime));
-      memcpy(shot.pressureGoalByTimeLeft, byTimeLeft, sizeof(byTimeLeft));
-      shot.numPressureGoalsByTime = nByTime;
-      shot.numPressureGoalsByTimeLeft = nByTimeLeft;
+      shot.num_pressure_goals_by_time = 0;
+      shot.num_pressure_goals_by_time_left = 0;
+      memcpy(shot.pressure_goal_by_time, byTime, sizeof(byTime));
+      memcpy(shot.pressure_goal_by_time_left, byTimeLeft, sizeof(byTimeLeft));
+      shot.num_pressure_goals_by_time = nByTime;
+      shot.num_pressure_goals_by_time_left = nByTimeLeft;
       DEBUG_SHOT_PRINT("Pressure profile set via web: %d by-time, %d by-time-left goals",
                        nByTime, nByTimeLeft);
     }
