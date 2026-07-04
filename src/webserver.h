@@ -22,13 +22,15 @@
 #include "shot_history.h"
 #include "dashboard.h"
 
-extern Shot shot;           // from shot_stopper.h (included before this header)
-extern float currentWeight; // live scale reading, owned by the control task
+extern Shot shot;                    // from shot_stopper.h (included before this header)
+extern volatile float currentWeight; // live scale reading, owned by the scale task
+extern volatile bool scaleConnected; // from shot_stopper.h, owned by the scale task
 
 #define WIFI_CONNECT_TIMEOUT_MS 15000
 
 AsyncWebServer server(80);
 bool wifiConnected = false;
+bool serverStarted = false;  // lets loop() start the server if WiFi comes up late
 
 // Set by HTTP handlers, consumed by the control task
 volatile bool webStartRequest = false;
@@ -52,6 +54,7 @@ const char* endReasonName(int end) {
 // Returns true if connected; the web server is only started when it is.
 bool initializeWiFi() {
   WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
   WiFi.begin(ssid, password);
   DEBUG_STARTUP_PRINT("Connecting to WiFi '%s'...", ssid);
 
@@ -82,9 +85,10 @@ void initializeServer(Shot* s, PIDController* pid) {
   server.on("/state", HTTP_GET, [](AsyncWebServerRequest* req) {
     JsonDocument doc;
     doc["brewing"] = shot.brewing;
+    doc["scaleConnected"] = (bool)scaleConnected;
     doc["shotTimer"] = shot.shot_timer;
     doc["expectedEnd"] = shot.expected_end_s;
-    doc["weight"] = currentWeight;
+    doc["weight"] = (float)currentWeight;
     doc["goalWeight"] = shot.goal_weight;
     doc["weightOffset"] = shot.weight_offset;
     doc["pressure"] = shot.pressure;
@@ -275,6 +279,7 @@ void initializeServer(Shot* s, PIDController* pid) {
   });
 
   server.begin();
+  serverStarted = true;
   DEBUG_STARTUP_PRINT("Web server started on port 80");
 }
 

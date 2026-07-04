@@ -61,7 +61,8 @@ PIDController pressurePID(25.0f, 0.5f, 8.0f);
 // ============================================================================
 
 // Note: 'shot' is declared in shot_stopper.h and available globally
-float currentWeight = 0.0;     // Current scale reading
+// Written by the scale task, read by the control task and web server
+volatile float currentWeight = 0.0;  // Current scale reading
 
 // ============================================================================
 // SETUP: Initialize all hardware and software components
@@ -71,6 +72,8 @@ float currentWeight = 0.0;     // Current scale reading
 
 // Real-time control loop task (defined below), started from setup()
 void controlTask(void* param);
+// Background scale connection/polling task (defined below), started from setup()
+void scaleTask(void* param);
 
 void setup() {
   // CPU and serial configuration
@@ -137,6 +140,7 @@ void setup() {
   DEBUG_STARTUP_PRINT("Bluetooth initialized for scale connection");
   #else
   DEBUG_STARTUP_PRINT("TESTING MODE: Scale/BLE connection disabled");
+  scaleConnected = true;  // pretend connected so the dashboard start button works
   #endif
 
   // Shot history buffer (RAM-only, read by the web server)
@@ -152,6 +156,14 @@ void setup() {
   // priority above loopTask, so the async web server (core 0) and anything
   // in loop() can never stall scale polling, trajectory updates, or pump PWM.
   xTaskCreatePinnedToCore(controlTask, "control", 10240, nullptr, 2, nullptr, 1);
+
+  #if !TESTING_MODE_NO_SCALE
+  // Scale connection runs as a background task at priority 1 (below the
+  // control task) so a missing scale can never stall brewing logic or the
+  // web dashboard. Core 1: the task-watchdogged core-0 idle task must not
+  // be starved by the blocking 10 s BLE scan inside scale.init().
+  xTaskCreatePinnedToCore(scaleTask, "scale", 8192, nullptr, 1, nullptr, 1);
+  #endif
 
   DEBUG_STARTUP_PRINT("Setup Complete");
 }
@@ -208,27 +220,19 @@ void controlIteration() {
   // ========================================================================
 
   #if !TESTING_MODE_NO_SCALE
-  // Attempt to connect to scale if not connected
-  // Falls back to manual pump control (dimmer) if scale unavailable
-  while (!scale.isConnected()) {
-    scale.init();
-    ledcWrite(pwmChannel, 255);  // TESTING MODE: Keep pump at max while connecting
-    currentWeight = 0;
+  // Scale connection/polling is handled by scaleTask in the background;
+  // this task never blocks on BLE and just consumes the shared state.
+  if (!scaleConnected) {
+    // Discard stale dashboard start clicks so a shot can't fire the moment
+    // the scale reconnects
+    webStartRequest = false;
     if (shot.brewing) {
+      DEBUG_SHOT_PRINT("Scale disconnected during shot - ending shot (machine button untouched)");
+      shot.brewing = false;
       setBrewingState(false);
     }
-    delay(100);
-  }
-
-  // Send heartbeat to scale periodically (~30s interval) to maintain BLE connection
-  if (scale.heartbeatRequired()) {
-    scale.heartbeat();
-  }
-
-  // Poll for new weight data from scale
-  // CRITICAL: Must call this continuously or scale connection goes stale
-  if (scale.newWeightAvailable()) {
-    currentWeight = scale.getWeight();
+  } else if (scaleNewWeight) {
+    scaleNewWeight = false;
 
     DEBUG_SCALE_PRINT("Weight: %.1f g | Offset: %.1f g", currentWeight, shot.weight_offset);
 
@@ -361,9 +365,87 @@ void controlTask(void* param) {
 }
 
 // ============================================================================
-// LOOP: idle - all real-time work happens in controlTask
+// SCALE TASK: background BLE connection management and weight polling
 // ============================================================================
+// Owns ALL scale/BLE calls; everyone else talks to it via the flags in
+// shot_stopper.h. scale.init() blocks up to 10 s while scanning - fine here,
+// the control task and web server keep running. Between failed attempts the
+// scan is stopped and the task backs off, because BLE scanning and WiFi share
+// the one 2.4 GHz radio: scanning back-to-back starves WiFi until it drops.
+
+#define SCALE_RETRY_BACKOFF_MS 5000
+
+void scaleTask(void* param) {
+  for (;;) {
+    if (!scale.isConnected()) {
+      scaleConnected = false;
+      currentWeight = 0;
+      // Drop commands queued while disconnected: they belong to a dead shot
+      scaleStartSequenceRequest = false;
+      scaleStopTimerRequest = false;
+      scaleTareRequest = false;
+
+      if (!scale.init()) {
+        BLE.stopScan();  // init() leaves the scan running on timeout
+        vTaskDelay(pdMS_TO_TICKS(SCALE_RETRY_BACKOFF_MS));
+        continue;
+      }
+      DEBUG_SCALE_PRINT("Scale connected");
+    }
+    scaleConnected = true;
+
+    // Heartbeat every ~30 s keeps the BLE connection alive
+    if (scale.heartbeatRequired()) {
+      scale.heartbeat();
+    }
+
+    // Poll continuously; without this the connection goes stale
+    if (scale.newWeightAvailable()) {
+      currentWeight = scale.getWeight();
+      scaleNewWeight = true;
+    }
+
+    // Execute commands queued by the control task
+    if (scaleStartSequenceRequest) {
+      scaleStartSequenceRequest = false;
+      scale.resetTimer();
+      vTaskDelay(pdMS_TO_TICKS(50));  // let the scale process each command
+      scale.startTimer();
+      if (AUTOTARE) {
+        vTaskDelay(pdMS_TO_TICKS(50));
+        scale.tare();
+      }
+    }
+    if (scaleStopTimerRequest) {
+      scaleStopTimerRequest = false;
+      scale.stopTimer();
+    }
+    if (scaleTareRequest) {
+      scaleTareRequest = false;
+      scale.tare();
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(20));
+  }
+}
+
+// ============================================================================
+// LOOP: WiFi watchdog - all real-time work happens in controlTask
+// ============================================================================
+// BLE scanning can knock WiFi off the shared radio; without this the
+// dashboard never comes back once WiFi drops.
 
 void loop() {
+  static unsigned long lastWifiRetryMs = 0;
+  if (WiFi.status() != WL_CONNECTED) {
+    if (millis() - lastWifiRetryMs > 15000) {
+      lastWifiRetryMs = millis();
+      DEBUG_STARTUP_PRINT("WiFi down - attempting reconnect");
+      WiFi.reconnect();
+    }
+  } else if (!serverStarted) {
+    // WiFi came up after boot timed out - start the dashboard now
+    initializeServer(&shot, &pressurePID);
+  }
   vTaskDelay(pdMS_TO_TICKS(1000));
 }

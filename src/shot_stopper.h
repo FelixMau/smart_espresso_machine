@@ -62,6 +62,18 @@ struct PressureGoalByTimeLeft {
 #define MAX_PRESSURE_GOALS 8
 
 AcaiaArduinoBLE scale(DEBUGMODE_ACAIA);
+
+// Scale state shared between the scale task (owner of ALL BLE/scale calls,
+// see main.cpp:scaleTask) and the control task (consumer). The control task
+// never touches the scale directly, so a disconnected scale can never block
+// brewing logic or starve the web server. Commands to the scale are queued
+// as flags, mirroring the webStartRequest pattern in webserver.h.
+volatile bool scaleConnected = false;
+volatile bool scaleNewWeight = false;            // set by scale task per weight packet
+volatile bool scaleStartSequenceRequest = false; // resetTimer + startTimer (+ tare)
+volatile bool scaleStopTimerRequest = false;
+volatile bool scaleTareRequest = false;
+
 float error = 0;
 int buttonArr[BUTTON_STATE_ARRAY_LENGTH];            // last 4 readings of the button
 
@@ -190,13 +202,7 @@ void setBrewingState(bool brewing) {
     shot.shot_timer = 0;
     shot.datapoints = 0;
     shot.peak_pressure = 0;
-    scale.resetTimer();
-    delay(50); // Small delay to allow scale to process reset command
-    scale.startTimer();
-    delay(50); // Small delay to allow scale to process start command
-    if(AUTOTARE){
-      scale.tare();
-    }
+    scaleStartSequenceRequest = true; // scale task: resetTimer + startTimer (+ tare)
   }else{
     const char* endReason = "UNDEF";
     switch (shot.end) {
@@ -227,7 +233,7 @@ void setBrewingState(bool brewing) {
                  shot.end_s, shot.peak_pressure, (int)shot.end);
     }
 
-    scale.stopTimer();
+    scaleStopTimerRequest = true;
     if(MOMENTARY &&
       (ENDTYPE::WEIGHT == shot.end || ENDTYPE::TIME == shot.end || ENDTYPE::WEB == shot.end)){
       //Pulse button to stop brewing
@@ -391,7 +397,7 @@ void handleButtonLogic() {
         DEBUG_BUTTON_PRINT("Writing solenoid HIGH");
         digitalWrite(OUT, HIGH);
         if (AUTOTARE) {
-          scale.tare();
+          scaleTareRequest = true;
         }
       }
       break;

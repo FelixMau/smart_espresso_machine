@@ -63,6 +63,9 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   button.danger { background: var(--critical); border-color: var(--critical); color: #fff; }
   button:active { opacity: 0.8; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .value.ok { color: var(--good); }
+  .value.bad { color: var(--critical); }
   input[type=number], input[type=text] {
     font: inherit; padding: 8px; border: 1px solid var(--border); border-radius: 8px;
     background: var(--page); color: var(--ink); width: 110px;
@@ -90,6 +93,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 
 <div class="cards">
   <div class="card"><div class="label">State</div><div class="value" id="tState">–</div></div>
+  <div class="card"><div class="label">Scale</div><div class="value" id="tScale">–</div></div>
   <div class="card"><div class="label">Shot time</div><div class="value" id="tTime">–</div><div class="sub">expected end <span id="tEnd">–</span> s</div></div>
   <div class="card"><div class="label">Weight</div><div class="value" id="tWeight">–</div><div class="sub">goal <span id="tGoalW">–</span> g − <span id="tOffset">–</span> g offset</div></div>
   <div class="card"><div class="label">Pressure</div><div class="value" id="tPressure">–</div><div class="sub">goal <span id="tGoalP">–</span> bar</div></div>
@@ -100,7 +104,7 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <section>
   <h2>Shot control</h2>
   <div class="panel row">
-    <button class="primary" onclick="fetch('/start_shot')">Start shot</button>
+    <button class="primary" id="startBtn" onclick="fetch('/start_shot')">Start shot</button>
     <button class="danger" onclick="fetch('/stop_shot')">Stop shot</button>
     <button onclick="fetch('/reset_shot')" title="Stops the shot on ESP and scale only - does not press the machine button">Reset (ESP only)</button>
     <div class="field">
@@ -278,6 +282,9 @@ async function poll() {
     document.getElementById('conn').className = 'ok';
 
     txt('tState', s.brewing ? 'Brewing' : 'Idle');
+    txt('tScale', s.scaleConnected ? 'Connected' : 'Offline');
+    document.getElementById('tScale').className = 'value ' + (s.scaleConnected ? 'ok' : 'bad');
+    startBtn.disabled = !s.scaleConnected;  // no shots without a scale
     txt('tTime', s.shotTimer.toFixed(1) + ' s');
     txt('tEnd', s.expectedEnd.toFixed(1));
     txt('tWeight', s.weight.toFixed(1) + ' g');
