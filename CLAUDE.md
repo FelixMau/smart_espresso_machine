@@ -51,7 +51,6 @@ The system uses **linear regression** to predict when shots reach target weight 
 | `shot_history.h` | ~95 | RAM-only ring buffer of last 5 shots, downsampled to 100 points each |
 | `debug.h` | ~90 | Category-based serial debug macros (`DEBUG_SHOT_PRINT`, `DEBUG_SCALE_PRINT`, ...) |
 | `secrets.h` | 1 | WiFi credentials (`ssid`, `password`) — must NOT be committed |
-| `on_hold.h` | ~110 | Legacy single-loop implementation, kept for reference only; not compiled |
 
 ### FreeRTOS Task Structure (main.cpp)
 

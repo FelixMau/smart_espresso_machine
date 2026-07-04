@@ -7,6 +7,11 @@ nul
 .claude/
 pitch_kaffeemacher.md
 
+# KiCad working files
+pcb/~*.lck
+pcb/_autosave-*
+pcb/*-bak
+
 # WiFi credentials — never commit (use secrets.h.example as template)
 src/secrets.h
 test/secrets.h
