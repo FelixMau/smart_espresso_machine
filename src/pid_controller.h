@@ -28,18 +28,26 @@ public:
 
   PIDController(float kp = 25.0f, float ki = 0.5f, float kd = 8.0f)
     : kp(kp), ki(ki), kd(kd),
-      outputMin(60),      // ~24% power minimum to prevent backflow
+      outputMin(77),       // 30% floor: min power to prevent backflow/pump shutoff
       outputMax(255),     // Full power maximum
       integralMax(100.0f),
       integral(0.0f),
       previousError(0.0f),
-      lastTimeMs(0) {}
+      lastTimeMs(0),
+      lastPTerm(0.0f),
+      lastITerm(0.0f),
+      lastDTerm(0.0f),
+      lastOutput(0) {}
 
   // Reset PID state (call when starting a new shot)
   void reset() {
     integral = 0.0f;
     previousError = 0.0f;
     lastTimeMs = millis();
+    lastPTerm = 0.0f;
+    lastITerm = 0.0f;
+    lastDTerm = 0.0f;
+    lastOutput = 0;
   }
 
   // Calculate PID output
@@ -81,11 +89,23 @@ public:
     // Constrain to safe PWM range
     int pwmValue = constrain((int)round(output), outputMin, outputMax);
 
+    // Store terms for external monitoring (web dashboard)
+    lastPTerm = pTerm;
+    lastITerm = iTerm;
+    lastDTerm = dTerm;
+    lastOutput = pwmValue;
+
     DEBUG_ENCODER_PRINT("PID: err=%.2f P=%.1f I=%.1f D=%.1f -> PWM=%d",
                         error, pTerm, iTerm, dTerm, pwmValue);
 
     return pwmValue;
   }
+
+  // Last computed terms and output (for web dashboard / tuning)
+  float getPTerm() const { return lastPTerm; }
+  float getITerm() const { return lastITerm; }
+  float getDTerm() const { return lastDTerm; }
+  int getOutput() const { return lastOutput; }
 
   // Get current integral value (for debugging/tuning)
   float getIntegral() const { return integral; }
@@ -99,6 +119,10 @@ private:
   float integral;        // Accumulated error
   float previousError;   // Previous error for derivative
   unsigned long lastTimeMs;  // Last calculation time
+  float lastPTerm;       // Last proportional term (monitoring)
+  float lastITerm;       // Last integral term (monitoring)
+  float lastDTerm;       // Last derivative term (monitoring)
+  int lastOutput;        // Last constrained PWM output (monitoring)
 };
 
 #endif // PID_CONTROLLER_H

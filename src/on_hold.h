@@ -46,7 +46,7 @@ void setup() {
 
   // Initialize the GPIO hardware
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(in, INPUT_PULLUP);
+  pinMode(button_read, INPUT_PULLUP);
   pinMode(OUT, OUTPUT);
   pinMode(DIMMER_PIN, OUTPUT); // Add for simple on/off control
 

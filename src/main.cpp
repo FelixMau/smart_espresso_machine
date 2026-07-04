@@ -4,8 +4,8 @@
 #include "debug.h"
 #include "shot_stopper.h"
 #include "AcaiaArduinoBLE.h"
-#include "webserver.h"
 #include "pid_controller.h"
+#include "webserver.h"
 
 // ============================================================================
 // TESTING CONFIGURATION
@@ -69,9 +69,13 @@ float currentWeight = 0.0;     // Current scale reading
 
   int finalPwmValue = 255;
 
+// Real-time control loop task (defined below), started from setup()
+void controlTask(void* param);
+
 void setup() {
   // CPU and serial configuration
-  setCpuFrequencyMhz(80);
+  // 240 MHz: WiFi (web server) + BLE (scale) share the radio and need headroom
+  setCpuFrequencyMhz(240);
   Serial.begin(9600);
   delay(100);
   DEBUG_STARTUP_PRINT("========================================");
@@ -100,7 +104,7 @@ void setup() {
 
   // GPIO pin initialization
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(in, INPUT_PULLUP);      // Button input
+  pinMode(button_read, INPUT_PULLUP);      // Button input
   pinMode(OUT, OUTPUT);            // Button output (opto-isolated)
   pinMode(DIMMER_PIN, OUTPUT);     // Dimmer PWM output
 
@@ -135,10 +139,19 @@ void setup() {
   DEBUG_STARTUP_PRINT("TESTING MODE: Scale/BLE connection disabled");
   #endif
 
-  // WiFi and web server initialization (optional)
-  // Uncomment these lines if you have WiFi credentials configured in secrets.h
-  // initializeWiFi();
-  // initializeServer(&shot);
+  // Shot history buffer (RAM-only, read by the web server)
+  initShotHistory();
+
+  // WiFi and web server (LAN dashboard). Boot continues without the
+  // dashboard if WiFi is unavailable (15s timeout).
+  if (initializeWiFi()) {
+    initializeServer(&shot, &pressurePID);
+  }
+
+  // Run the real-time control loop as its own FreeRTOS task on core 1 with
+  // priority above loopTask, so the async web server (core 0) and anything
+  // in loop() can never stall scale polling, trajectory updates, or pump PWM.
+  xTaskCreatePinnedToCore(controlTask, "control", 10240, nullptr, 2, nullptr, 1);
 
   DEBUG_STARTUP_PRINT("Setup Complete");
 }
@@ -169,11 +182,27 @@ void printScalePressureStatus() {
   DEBUG_SENSOR_PRINT("Pressure raw: %d | voltage: %.2f V | pressure: %.2f bar", raw, voltage, pressure);
 }
 
-// ============================================================================
-// LOOP: Main execution loop
-// ============================================================================
+// Re-print the dashboard URL every 10s so it can't scroll away in the log
+void printWifiStatus() {
+  static unsigned long lastWifiStatusMs = 0;
+  if (millis() - lastWifiStatusMs < 10000) {
+    return;
+  }
+  lastWifiStatusMs = millis();
+  if (WiFi.status() == WL_CONNECTED) {
+    DEBUG_STARTUP_PRINT("Dashboard: http://%s/", WiFi.localIP().toString().c_str());
+  } else {
+    DEBUG_STARTUP_PRINT("WiFi not connected - dashboard unavailable");
+  }
+}
 
-void loop() {
+// ============================================================================
+// CONTROL LOOP: Real-time control iteration
+// ============================================================================
+// Runs in its own FreeRTOS task (core 1, priority 2) so the async web server
+// on core 0 can never stall scale polling, trajectory updates, or pump PWM.
+
+void controlIteration() {
   // ========================================================================
   // SCALE CONNECTION AND DATA POLLING
   // ========================================================================
@@ -211,6 +240,56 @@ void loop() {
   currentWeight = 0;
   #endif
 
+  // Keep the pressure reading fresh even when idle, so the web dashboard
+  // shows live pressure between shots (updateShotTrajectory only reads it
+  // while brewing)
+  if (!shot.brewing) {
+    updatePressureSensor(&shot);
+  }
+
+  // ========================================================================
+  // WEB DASHBOARD START/STOP REQUESTS
+  // ========================================================================
+  // HTTP handlers only set flags; the scale/BLE is touched exclusively here
+  // in the control task.
+
+  if (webStartRequest) {
+    webStartRequest = false;
+    if (!shot.brewing) {
+      DEBUG_SHOT_PRINT("Shot start requested via web - pressing machine button");
+      if (MOMENTARY) {
+        // Pulse the opto-coupled button to start the machine
+        digitalWrite(OUT, HIGH);
+        delay(1000);
+        digitalWrite(OUT, LOW);
+      } else {
+        // Latching machine: hold the brew line via the output pin
+        digitalWrite(OUT, HIGH);
+        buttonLatched = true;
+      }
+      shot.brewing = true;
+      setBrewingState(true);
+    }
+  }
+  if (webStopRequest) {
+    webStopRequest = false;
+    if (shot.brewing) {
+      DEBUG_SHOT_PRINT("Shot stop requested via web - pressing machine button");
+      shot.brewing = false;
+      shot.end = ENDTYPE::WEB;  // pulses the machine button like WEIGHT/TIME
+      setBrewingState(false);
+    }
+  }
+  if (webResetRequest) {
+    webResetRequest = false;
+    if (shot.brewing) {
+      DEBUG_SHOT_PRINT("Shot reset requested via web - machine button untouched");
+      shot.brewing = false;
+      shot.end = ENDTYPE::BUTTON;  // BUTTON end skips the machine pulse
+      setBrewingState(false);
+    }
+  }
+
   // ========================================================================
   // PUMP DIMMER CONTROL (Auto during shot, 100% when idle)
   // ========================================================================
@@ -246,8 +325,9 @@ void loop() {
   }
   
 
-  // Apply final PWM value to dimmer
+  // Apply final PWM value to dimmer and publish it for the web dashboard
   ledcWrite(pwmChannel, finalPwmValue);
+  shot.pumpPwm = finalPwmValue;
 
   // ========================================================================
   // BUTTON AND SHOT STATE MANAGEMENT
@@ -258,6 +338,8 @@ void loop() {
 
   printScalePressureStatus();
 
+  printWifiStatus();
+
   // Monitor for maximum shot duration (safety timeout)
   handleMaxDurationReached(&shot);
 
@@ -267,18 +349,21 @@ void loop() {
   // Post-shot error detection and EEPROM learning
   // Learns weight offset if final weight is within 5g of goal
   detectShotError(&shot, currentWeight);
+}
 
-  // ========================================================================
-  // OPTIONAL: WEB SERVER AND MONITORING
-  // ========================================================================
+// Control task: run the control iteration at a fixed ~50 ms cadence.
+// The web server runs asynchronously in the AsyncTCP task and never blocks this.
+void controlTask(void* param) {
+  for (;;) {
+    controlIteration();
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+}
 
-  // Uncomment to enable web dashboard and API
-  // updateWebServer(&shot);
+// ============================================================================
+// LOOP: idle - all real-time work happens in controlTask
+// ============================================================================
 
-  // ========================================================================
-  // LOOP TIMING
-  // ========================================================================
-
-  // Small delay for stability and serial readability
-  delay(50);
+void loop() {
+  vTaskDelay(pdMS_TO_TICKS(1000));
 }

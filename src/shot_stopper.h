@@ -2,6 +2,7 @@
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 #include "debug.h"
+#include "shot_history.h"
 
 #define MAX_OFFSET 5                // In case an error in brewing occured
 #define MIN_SHOT_DURATION_S 3       //Useful for flushing the group.
@@ -17,7 +18,7 @@
 #define WEIGHT_ADDR 0  // Use the first byte of EEPROM to store the goal weight
 #define OFFSET_ADDR 1  
 
-#define N 10                        // Number of datapoints used to calculate trend line
+#define datapoints_trend_line 10                        // Number of datapoints used to calculate trend line
 
 //User defined***
 #define MOMENTARY true        //Define brew switch style. 
@@ -29,27 +30,23 @@
                               //  and 3 seconds after a latching switch brew 
                               // (as defined by MOMENTARY)
 
-#define DEBUG false
+#define DEBUGMODE_ACAIA false
 //***************
 
 // Board Hardware 
-#ifdef ARDUINO_ESP32S3_DEV
-  #define IN          34
-  #define OUT         22
-  #define REED_IN     25
-#else //todo: find nano esp32 identifier
-  //LED's are defined by framework
-  #define IN          13
-  #define OUT         22
-  #define REED_IN     25
-#endif 
+#define BUTTON_READ_PIN          34
+#define OUT         22
+#define REED_IN     25
+
 
 #define PRESSURE_PIN 32 // Analog pin for pressure sensor (MPX5500 or similar)
 
 #define BUTTON_STATE_ARRAY_LENGTH 8
 extern const int DIMMER_PIN;
 
-typedef enum {BUTTON, WEIGHT, TIME, UNDEF} ENDTYPE;
+// WEB = stopped from the dashboard (presses the machine button like WEIGHT/TIME)
+// BUTTON = ended without machine action (physical button or dashboard reset)
+typedef enum {BUTTON, WEIGHT, TIME, WEB, UNDEF} ENDTYPE;
 
 // Helper struct for pressure goal pairs
 struct PressureGoalByTime {
@@ -64,12 +61,12 @@ struct PressureGoalByTimeLeft {
 
 #define MAX_PRESSURE_GOALS 8
 
-AcaiaArduinoBLE scale(DEBUG);
+AcaiaArduinoBLE scale(DEBUGMODE_ACAIA);
 float error = 0;
 int buttonArr[BUTTON_STATE_ARRAY_LENGTH];            // last 4 readings of the button
 
 // button 
-int in = REEDSWITCH ? REED_IN : IN;
+int button_read = REEDSWITCH ? REED_IN : BUTTON_READ_PIN;
 bool buttonPressed = false; //physical status of button
 bool buttonLatched = false; //electrical status of button
 unsigned long lastButtonRead_ms = 0;
@@ -99,6 +96,10 @@ struct Shot {
   // Add these:
   float goalWeight;
   float weightOffset;
+
+  // Published for web dashboard monitoring
+  int pumpPwm;         // Last PWM value written to the dimmer (0-255)
+  float peakPressure;  // Highest pressure seen during the current shot
 };
 
 //Initialize shot
@@ -127,7 +128,9 @@ Shot shot = {
   1, // numPressureGoalsByTimeLeft
   0, // current_goal_pressure
   0, // goalWeight (set from EEPROM later)
-  0  // weightOffset (set from EEPROM later)
+  0, // weightOffset (set from EEPROM later)
+  255, // pumpPwm (idle = full speed)
+  0  // peakPressure
 };
 
 // Expose shot for use in other modules
@@ -157,22 +160,22 @@ void updatePressureSensor(Shot* s) {
 
 void calculateEndTime(Shot* s) {
   // Do not predict end time if there aren't enough espresso measurements yet
-  if ((s->datapoints < N) || (s->weight[s->datapoints - 1] < 10)) {
+  if ((s->datapoints < datapoints_trend_line) || (s->weight[s->datapoints - 1] < 10)) {
     s->expected_end_s = MAX_SHOT_DURATION_S;
   } else {
     // Get line of best fit (y=mx+b) from the last 10 measurements
     float sumXY = 0, sumX = 0, sumY = 0, sumSquaredX = 0, m = 0, b = 0, meanX = 0, meanY = 0;
 
-    for (int i = s->datapoints - N; i < s->datapoints; i++) {
+    for (int i = s->datapoints - datapoints_trend_line; i < s->datapoints; i++) {
       sumXY += s->time_s[i] * s->weight[i];
       sumX += s->time_s[i];
       sumY += s->weight[i];
       sumSquaredX += (s->time_s[i] * s->time_s[i]);
     }
 
-    m = (N * sumXY - sumX * sumY) / (N * sumSquaredX - (sumX * sumX));
-    meanX = sumX / N;
-    meanY = sumY / N;
+    m = (datapoints_trend_line * sumXY - sumX * sumY) / (datapoints_trend_line * sumSquaredX - (sumX * sumX));
+    meanX = sumX / datapoints_trend_line;
+    meanY = sumY / datapoints_trend_line;
     b = meanY - m * meanX;
 
     // Calculate time at which goal weight will be reached (x = (y-b)/m)
@@ -186,6 +189,7 @@ void setBrewingState(bool brewing) {
     shot.start_timestamp_s = seconds_f();
     shot.shotTimer = 0;
     shot.datapoints = 0;
+    shot.peakPressure = 0;
     scale.resetTimer();
     delay(50); // Small delay to allow scale to process reset command
     scale.startTimer();
@@ -205,6 +209,9 @@ void setBrewingState(bool brewing) {
       case ENDTYPE::BUTTON:
         endReason = "BUTTON";
         break;
+      case ENDTYPE::WEB:
+        endReason = "WEB";
+        break;
       case ENDTYPE::UNDEF:
         endReason = "UNDEF";
         break;
@@ -212,9 +219,17 @@ void setBrewingState(bool brewing) {
     DEBUG_SHOT_PRINT("Shot ended by: %s (duration: %.1f s)", endReason, seconds_f() - shot.start_timestamp_s);
 
     shot.end_s = seconds_f() - shot.start_timestamp_s;
+
+    // Snapshot the trajectory into the history ring buffer before the next
+    // shot overwrites it. Skip flushes shorter than MIN_SHOT_DURATION_S.
+    if (shot.end_s >= MIN_SHOT_DURATION_S) {
+      recordShot(shot.time_s, shot.weight, shot.datapoints,
+                 shot.end_s, shot.peakPressure, (int)shot.end);
+    }
+
     scale.stopTimer();
     if(MOMENTARY &&
-      (ENDTYPE::WEIGHT == shot.end || ENDTYPE::TIME == shot.end)){
+      (ENDTYPE::WEIGHT == shot.end || ENDTYPE::TIME == shot.end || ENDTYPE::WEB == shot.end)){
       //Pulse button to stop brewing
       DEBUG_SHOT_PRINT("Writing solenoid HIGH");
       digitalWrite(OUT,HIGH);
@@ -236,6 +251,9 @@ void setBrewingState(bool brewing) {
 void updateShotTrajectory(Shot* shot, float currentWeight) {
   if (shot->brewing) {
     updatePressureSensor(shot);
+    if (shot->pressure > shot->peakPressure) {
+      shot->peakPressure = shot->pressure;
+    }
     shot->time_s[shot->datapoints] = seconds_f() - shot->start_timestamp_s;
     shot->weight[shot->datapoints] = currentWeight;
     shot->shotTimer = shot->time_s[shot->datapoints];
@@ -327,7 +345,7 @@ void handleButtonLogic() {
     for (int i = BUTTON_STATE_ARRAY_LENGTH - 2; i >= 0; i--) {
       buttonArr[i + 1] = buttonArr[i];
     }
-    buttonArr[0] = digitalRead(in); // Active Low
+    buttonArr[0] = digitalRead(button_read); // Active Low
         // Determine new button state
     newButtonState = 0;
     for (int i = 0; i < BUTTON_STATE_ARRAY_LENGTH; i++) {
