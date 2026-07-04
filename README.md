@@ -1,35 +1,73 @@
 # smart espresso machine
-This is a more or less private project where I work on my Espresso machine to digitalise and IOT enable my Dalla Corte Mini and maybe other machines in future too!
 
-The Goal here in opposite of [Gaggiuino Project](https://gaggiuino.github.io/#/?id=home) is to not replace the machines original controls but rather extend them. This way we dont have to mingle so much with high voltages, and enable the machine to be restoreable.
+A hobby project to digitalise and IoT-enable my **Dalla Corte Mini** espresso machine (and maybe other machines in the future).
 
-**This project is on hold since I cannot afford printing another PCB at the moment**
+Unlike the [Gaggiuino Project](https://gaggiuino.github.io/#/?id=home), the goal here is **not** to replace the machine's original controls but to **extend** them. This way we don't have to mingle so much with high voltages, and the machine stays fully restorable to stock.
 
-### Planned features
-Planed features include:
+An ESP32 reads a Bluetooth scale and a pressure sensor, drives the pump via a PWM dimmer with a PID pressure controller, and uses linear regression to predict when a shot reaches its target weight — stopping extraction at the optimal moment. Everything is monitored and controlled live from a web dashboard on the LAN.
+
+## Dashboard
+
+Live monitoring, start/stop/reset, PID tuning, goal weight and pressure profile editing, plus live charts and a shot-history comparison — all served from the ESP32.
+
+<!-- Add real screenshots to the assets/ folder (see assets/README.md) -->
+![Dashboard](assets/dashboard.png)
+![Live shot](assets/dashboard.gif)
+
+## Features
+
 - [x] Connect the scale to the microcontroller
-- [x] Microcontroller can read the *shotbutton* from the machine
-- [x] Microcontroller is able to also 'press' the *shotbutton*
+- [x] Microcontroller can read the *shot button* from the machine
+- [x] Microcontroller is able to also 'press' the *shot button*
 - [x] Design a PCB to hold the sensors
-- [x] Microcontroller is able to adjust pump power via a Dimmer
-- [x] Mechanical button/knob to *manually* adjust Pump power during shots
+- [x] Microcontroller adjusts pump power via a dimmer
+- [x] Mechanical knob to *manually* adjust pump power during shots
 - [x] Add pressure sensor
-- [ ] Pressure seonsor readings are shown on a simple display.
+- [x] PID-controlled pressure profiles (live-tunable over the web)
+- [x] Predictive shot stopping via linear regression on weight-vs-time
+- [x] EEPROM auto-learning of the weight offset after each shot
+- [x] Async web dashboard: live tiles, charts, control and tuning
+- [ ] Pressure sensor readings shown on a simple on-device display
 - [ ] Design cases for PCB, display, knob
 
-### Working details of Features
-- Connection of Scale to Microcontroller
-  - Scale is a Acaia Lunar scale and I am using @tatemazer's [AcaiaArduinoBLE](https://github.com/tatemazer/AcaiaArduinoBLE) Library
-  - Microcontroller is a ESP32 Board
-- Button is read via Optocoppler just like in [AcaiaArduinoBLE](https://github.com/tatemazer/AcaiaArduinoBLE) Library as well.
-- Button is written via Optocoppler just like in [AcaiaArduinoBLE](https://github.com/tatemazer/AcaiaArduinoBLE) Library too.
-- Microcontroller is using a PWM signal to control the Dimmer, unfortunately I have not been able to get the zero crossing functionality running.
-- Encoder knob is connected to control PumpPower as the PCB is faulty and I needed to be able to keep dringing cofe while work is in progress.
+## Working details
 
-### New PCB design almost ready for production:
-- [x] Added lights Power connections
-- [x] Correct false routing
-- [x] Correct Footprint of Optokopplers
-- [x] Adding on/off switch to save power on ESP
-- [x] Get second opintion on PCB design.
-- [x] Added interface for potential Display
+- **Scale**: Acaia Lunar, via [@tatemazer's AcaiaArduinoBLE](https://github.com/tatemazer/AcaiaArduinoBLE) library.
+- **Microcontroller**: ESP32 (upesy_wroom), firmware built with PlatformIO.
+- **Button read/write**: via optocouplers, so the ESP never touches the machine's high-voltage logic.
+- **Pump control**: PWM signal to the dimmer (zero-crossing functionality not yet working).
+- **Manual override**: an encoder knob controls pump power (handy while work is in progress).
+- **Architecture**: separate FreeRTOS tasks for BLE, the control loop, and the web server, so a missing scale or busy web client can never stall brewing. Boots and brews without WiFi and without the scale.
+
+## Getting started
+
+```bash
+# 1. Provide WiFi credentials (this file is gitignored — never commit it)
+cp src/secrets.h.example src/secrets.h   # then edit ssid / password
+
+# 2. Build and upload
+platformio run -e upesy_wroom
+platformio run -e upesy_wroom --target upload
+
+# 3. Watch serial output (dashboard URL is printed periodically)
+platformio device monitor
+```
+
+The dashboard is then reachable at the IP the ESP32 prints on the serial console.
+
+## PCB
+
+The KiCad design lives in `pcb/`. Latest revision:
+
+- [x] Added lights / power connections
+- [x] Corrected false routing
+- [x] Corrected optocoupler footprints
+- [x] Added on/off switch to save power on the ESP
+- [x] Got a second opinion on the PCB design
+- [x] Added interface for a potential display
+
+## License
+
+Licensed under the **GNU General Public License v3.0** — see [LICENSE](LICENSE).
+
+Copyright © 2026 Felix Maurer.
