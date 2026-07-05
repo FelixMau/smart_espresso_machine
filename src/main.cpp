@@ -6,6 +6,7 @@
 
 #include "debug.h"
 #include "pid_controller.h"
+#include "pump_dimmer.h"
 #include "shot_history.h"
 #include "shot_stopper.h"
 #include "webserver.h"
@@ -27,11 +28,9 @@
 const int ENCODER_PIN_A = 23;
 const int ENCODER_PIN_B = 25;
 
-// Pump dimmer PWM
-const int DIMMER_PIN = 5;           // PWM output pin
-const int PWM_FREQUENCY_HZ = 50;    // PWM frequency
-const int PWM_CHANNEL = 0;          // LEDC channel (0 for dimmer, 1 for display backlight)
-const int PWM_RESOLUTION_BITS = 8;  // 8-bit resolution (0 to 255)
+// Pump dimmer: phase-angle control in pump_dimmer.cpp. Triac gate on
+// DIMMER_PIN, mains zero-cross detector on ZERO_CROSS_PIN (GPIO 4).
+const int DIMMER_PIN = 5;  // Triac gate / opto-coupler drive
 
 // Display SPI pins (for future display integration)
 const int TFT_CLK = 18;   // SPI clock
@@ -97,7 +96,6 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(BUTTON_INPUT_PIN, INPUT_PULLUP);  // Button input
   pinMode(PRESS_BUTTON_PIN, OUTPUT);        // Button output (opto-isolated)
-  pinMode(DIMMER_PIN, OUTPUT);              // Dimmer PWM output
 
   // Display pins (for future display integration)
   pinMode(TFT_CLK, OUTPUT);
@@ -114,11 +112,12 @@ void setup() {
   encoder.setCount(0);
   DEBUG_STARTUP_PRINT("Encoder initialized (half-quad mode)");
 
-  // Initialize PWM for dimmer control (channel 0: pump dimmer)
-  ledcSetup(PWM_CHANNEL, PWM_FREQUENCY_HZ, PWM_RESOLUTION_BITS);
-  ledcAttachPin(DIMMER_PIN, PWM_CHANNEL);
-  ledcWrite(PWM_CHANNEL, 255);  // Start with pump at FULL SPEED (idle state)
-  DEBUG_STARTUP_PRINT("PWM dimmer initialized (50Hz, 8-bit) - Pump at 100%% (idle)");
+  // Initialize the phase-angle pump dimmer (zero-cross synced triac control).
+  // Power level starts at 255, so the pump runs at 100% from the first
+  // detected zero crossing (idle state).
+  initPumpDimmer(DIMMER_PIN);
+  DEBUG_STARTUP_PRINT("Phase-angle dimmer initialized (zero cross on GPIO %d) - Pump at 100%% (idle)",
+                      ZERO_CROSS_PIN);
 
   #if !TESTING_MODE_NO_SCALE
   // BLE initialization (for Acaia Lunar scale connection)
@@ -307,8 +306,9 @@ void controlIteration() {
     DEBUG_ENCODER_PRINT("IDLE - Pump at 100%% (255) | Encoder: %ld", encoderPosition);
   }
 
-  // Apply final PWM value to dimmer and publish it for the web dashboard
-  ledcWrite(PWM_CHANNEL, pwmValue);
+  // Apply final power level to the phase-angle dimmer and publish it for
+  // the web dashboard
+  pumpDimmerSetPower(pwmValue);
   shot.pumpPwm = pwmValue;
 
   // ========================================================================

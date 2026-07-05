@@ -54,6 +54,7 @@ should be able to start shot via app
 
 - [ ] Check on 230V safety and how to design properly with 230V on a espressomachine (that uses heats up water and puts it under pressure)
 - [ ] Expose machine to internet? IDK this leads to many questions needing answeres such as how and which ports would need to be opened? Xiaomi robo cleaner does that somehow but I dont know how yet. Also password would be needed to log in -> or some local setup would provide a "password" via the app internally but all of this seems like a hustle for just the little benefit of no need to connect to local wifi....
+- [ ] How could I sense the watertank fill status?
 
 
 

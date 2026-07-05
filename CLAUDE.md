@@ -28,7 +28,7 @@ platformio test
 - **Bluetooth scale** (Acaia Lunar) for weight measurement via BLE
 - **Pressure sensor** (MPX5500, 0-16 bar) for extraction monitoring
 - **Opto-isolated button control** to automate pump and solenoid
-- **PID-controlled pump dimmer** (PWM, 50 Hz) following configurable pressure profiles
+- **PID-controlled pump dimmer** (zero-cross-synced phase-angle triac control) following configurable pressure profiles
 - **Rotary encoder** for manual pump power adjustment
 - **Async web dashboard** for live monitoring, control, and PID tuning over LAN
 - **EEPROM storage** for goal weight and learned calibration offsets
@@ -52,6 +52,7 @@ prototypes) in the header, definitions in the source file.
 | `dashboard.h` | ~340 | Embedded single-page dashboard (PROGMEM HTML, Chart.js from CDN, polls `/state` every 500 ms) |
 | `pid_controller.h/.cpp` | ~65/~75 | PID class for pressure control (anti-windup, output floor to prevent pump shutoff) |
 | `shot_history.h/.cpp` | ~45/~70 | RAM-only ring buffer of last 5 shots, downsampled to 100 points each |
+| `pump_dimmer.h/.cpp` | ~45/~130 | AC phase-angle pump dimmer: zero-cross ISR (GPIO 4) + one-shot hw timer fires the triac gate; falls back to on/off if the sync signal disappears |
 | `debug.h` | ~70 | Category-based serial debug macros (`DEBUG_SHOT_PRINT`, `DEBUG_SCALE_PRINT`, ...) |
 | `secrets.h` | 1 | WiFi credentials (`ssid`, `password`) — must NOT be committed. Include AFTER the WiFi headers: the macros clobber their parameter names otherwise |
 
@@ -86,12 +87,18 @@ A global `Shot shot` instance is shared across modules.
 - Enables stopping shots before over-extraction
 
 **PID Pressure Control** (pid_controller.cpp + main.cpp:controlIteration)
-- During a shot, pump PWM = `pressurePID.calculate(shot.currentGoalPressure, shot.pressure)`
+- During a shot, pump power = `pressurePID.calculate(shot.currentGoalPressure, shot.pressure)` (0–255, applied as a phase-angle firing delay by pump_dimmer.cpp)
 - Default gains Kp=15, Ki=1, Kd=5; live-tunable via web (`/set_pid`)
 - Pressure is sampled every control iteration (~20 Hz) with EMA smoothing (`PRESSURE_FILTER_ALPHA`) — never only at the scale's ~2 Hz weight rate, which froze the measurement between updates and made the derivative term slam the pump on every jump
 - Derivative acts on the (filtered) measurement, not the error, so profile setpoint steps don't kick the output
 - Output is slew-rate limited (`outputSlewRate`, PWM counts/s); output floor prevents pump shutoff; anti-windup on integral term
-- Idle state: pump at 100 % (PWM 255)
+- Idle state: pump at 100 % (level 255)
+
+**Phase-Angle Pump Dimming** (pump_dimmer.cpp)
+- Zero-cross detector on GPIO 4 (rising edge, 100/s at 50 Hz); triac gate on `DIMMER_PIN` (GPIO 5)
+- ZC ISR drops the gate and arms a one-shot hardware timer (timer 0, 1 µs ticks) with `delay = (255 − level)/255 × 10 ms`; the timer ISR raises the gate, which stays high until the next zero cross so the inductive pump load can't drop the triac out
+- 4 ms glitch filter on ZC edges; firing window clamped to [200 µs, 9.5 ms]; levels ≥ 250 hold the gate high, ≤ 2 never fire
+- Fallback: no zero crossings for 100 ms → plain on/off gate drive (pump survives a lost sync signal mid-shot); transitions logged via `DEBUG_PUMP_PRINT`
 
 **Pressure Profiles** (shot_stopper.cpp:updateShotTrajectory)
 - Two goal lists, up to `MAX_PRESSURE_GOALS` (8) each:
@@ -120,7 +127,8 @@ Defined in shot_stopper.h and main.cpp:
 #define BUTTON_READ_PIN 13       // Button input, active low (34 on ESP32-S3; REED_IN 25 if REEDSWITCH)
 #define PRESS_BUTTON_PIN 22      // Button output (opto-coupled to machine)
 #define PRESSURE_PIN 32          // ADC input, MPX5500: P = (V - 0.4) * 16 / (3.3 - 0.4) bar
-const int DIMMER_PIN = 5;        // Pump dimmer PWM (50 Hz, 8-bit, LEDC channel 0), main.cpp
+const int DIMMER_PIN = 5;        // Triac gate / opto drive (phase-angle control), main.cpp
+#define ZERO_CROSS_PIN 4         // Mains zero-cross detector input, pump_dimmer.h
 // Encoder: GPIO 23 (A), GPIO 25 (B), half-quad mode
 // Display SPI (reserved, not yet driven): CLK 18, MOSI 19, MISO 21, CS 17, DC 16, RST 14, BL 2
 ```
@@ -217,7 +225,7 @@ webserver.h intentionally uses `ESPRESSO_WEBSERVER_H` as its guard — `WEBSERVE
 
 - PCB in `pcb/` directory (KiCad), routing complete with opto-coupler footprints, power connections, on/off switch, display interface
 - **Status**: On hold — waiting to afford the next PCB print run
-- **Known limitation**: PWM dimmer lacks zero-crossing detection (currently basic 50 Hz PWM)
+- Pump dimming uses zero-cross-synced phase-angle control (pump_dimmer.cpp); the detector output must be wired to GPIO 4
 
 ## Dependencies (platformio.ini lib_deps)
 
@@ -230,7 +238,7 @@ webserver.h intentionally uses `ESPRESSO_WEBSERVER_H` as its guard — `WEBSERVE
 | me-no-dev/AsyncTCP @^1.1.1 | Async TCP for web server |
 | me-no-dev/ESPAsyncWebServer (git) | Async web server |
 
-Pump dimming uses the ESP32 LEDC peripheral directly (no dimmer library).
+Pump dimming is implemented in-repo (pump_dimmer.cpp) with a GPIO interrupt + ESP32 hardware timer — no dimmer library.
 
 ## Important Design Patterns
 
