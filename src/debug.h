@@ -68,24 +68,4 @@
 #define DEBUG_STARTUP_PRINT(fmt, ...) DEBUG_PRINT("[STARTUP]", DEBUG_STARTUP, fmt, ##__VA_ARGS__)
 #define DEBUG_STATE_PRINT(fmt, ...) DEBUG_PRINT("[STATE]", DEBUG_STATE, fmt, ##__VA_ARGS__)
 
-// Macros for multiple parameters with named output
-#define DEBUG_SHOT_VAL(name, value) DEBUG_SHOT_PRINT("%s: %.2f", name, (double)(value))
-#define DEBUG_SENSOR_VAL(name, value) DEBUG_SENSOR_PRINT("%s: %.2f", name, (double)(value))
-#define DEBUG_BUTTON_VAL(name, value) DEBUG_BUTTON_PRINT("%s: %d", name, (int)(value))
-#define DEBUG_ENCODER_VAL(name, value) DEBUG_ENCODER_PRINT("%s: %ld", name, (long)(value))
-
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
-
-// Get elapsed time in seconds since startup
-inline float getElapsedSeconds() {
-  return millis() / 1000.0;
-}
-
-// Get elapsed time in milliseconds since startup
-inline unsigned long getElapsedMillis() {
-  return millis();
-}
-
 #endif // DEBUG_H

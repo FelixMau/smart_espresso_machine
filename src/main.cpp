@@ -1,79 +1,66 @@
 #include <Arduino.h>
 #include <EEPROM.h>
 #include <ESP32Encoder.h>
+#include <AcaiaArduinoBLE.h>
+#include <WiFi.h>
+
 #include "debug.h"
-#include "shot_stopper.h"
-#include "AcaiaArduinoBLE.h"
 #include "pid_controller.h"
+#include "shot_history.h"
+#include "shot_stopper.h"
 #include "webserver.h"
 
 // ============================================================================
 // TESTING CONFIGURATION
 // ============================================================================
-#define TESTING_MODE_NO_SCALE false    // Set to true to disable scale/BLE connection during testing
-#define TESTING_PRINT_ENCODER true    // Print encoder position and PWM to Serial
+
+#define TESTING_MODE_NO_SCALE false     // Set to true to disable scale/BLE connection during testing
 #define TESTING_PRINT_SCALE_STATUS true // Print scale connection and pressure health status
 
 // ============================================================================
 // PIN CONFIGURATION
 // ============================================================================
+// Button input, button output (PRESS_BUTTON_PIN, GPIO 22) and the pressure
+// sensor (PRESSURE_PIN, GPIO 32) are defined in shot_stopper.h.
 
-// Encoder pins
-const int encoderPinA = 23;    // Encoder pin A (half-quad mode)
-const int encoderPinB = 25;    // Encoder pin B (half-quad mode)
+// Encoder pins (half-quad mode)
+const int ENCODER_PIN_A = 23;
+const int ENCODER_PIN_B = 25;
 
-// Pump Dimmer pins (PWM)
-// Note: DIMMER_PIN is declared as 'extern' in shot_stopper.h
-const int DIMMER_PIN = 5;      // PWM output pin (must match shot_stopper.h declaration)
-const int freq = 50;           // PWM frequency (Hz)
-const int pwmChannel = 0;      // PWM channel (0 for dimmer, 1 for display backlight)
-const int resolution = 8;      // 8-bit resolution (0 to 255)
-
-// Button and Solenoid pins (defined in shot_stopper.h, declared here for clarity)
-// GPIO 13: IN (Button input)
-// GPIO 22: OUT (Solenoid output)
-
-// Pressure Sensor pin (defined in shot_stopper.h)
-// GPIO 33: PRESSURE_PIN
+// Pump dimmer PWM
+const int DIMMER_PIN = 5;           // PWM output pin
+const int PWM_FREQUENCY_HZ = 50;    // PWM frequency
+const int PWM_CHANNEL = 0;          // LEDC channel (0 for dimmer, 1 for display backlight)
+const int PWM_RESOLUTION_BITS = 8;  // 8-bit resolution (0 to 255)
 
 // Display SPI pins (for future display integration)
-const int TFT_CLK = 18;        // SPI Clock
-const int TFT_MOSI = 19;       // SPI Data Out to display
-const int TFT_MISO = 21;       // SPI Data In from display
-const int TFT_CS = 17;         // Chip Select
-const int TFT_DC = 16;         // Data/Command
-const int TFT_RST = 14;        // Reset
-const int TFT_BL = 2;          // Backlight PWM (future)
-
-// ============================================================================
-// ENCODER AND DIMMER STATE
-// ============================================================================
-
-ESP32Encoder encoder;
-int encoderAdjustment = 255;     // Encoder position (0-255 for PWM adjustment)
-
-// PID controller for pressure regulation
-// Gains: Kp=25, Ki=0.5, Kd=8 (tune as needed)
-PIDController pressurePID(25.0f, 0.5f, 8.0f);
+const int TFT_CLK = 18;   // SPI clock
+const int TFT_MOSI = 19;  // SPI data out to display
+const int TFT_MISO = 21;  // SPI data in from display
+const int TFT_CS = 17;    // Chip select
+const int TFT_DC = 16;    // Data/command
+const int TFT_RST = 14;   // Reset
+const int TFT_BL = 2;     // Backlight PWM (future)
 
 // ============================================================================
 // GLOBAL STATE
 // ============================================================================
+// 'shot' and 'currentWeight' are defined in shot_stopper.cpp: currentWeight
+// is written by the scale task, read by the control task and web server.
 
-// Note: 'shot' is declared in shot_stopper.h and available globally
-// Written by the scale task, read by the control task and web server
-volatile float currentWeight = 0.0;  // Current scale reading
+ESP32Encoder encoder;
 
-// ============================================================================
-// SETUP: Initialize all hardware and software components
-// ============================================================================
-
-  int finalPwmValue = 255;
+// PID controller for pressure regulation, live-tunable via the web dashboard
+PIDController pressurePID(25.0f, 0.5f, 8.0f);
 
 // Real-time control loop task (defined below), started from setup()
 void controlTask(void* param);
 // Background scale connection/polling task (defined below), started from setup()
 void scaleTask(void* param);
+
+// ============================================================================
+// SETUP
+// ============================================================================
 
 void setup() {
   // CPU and serial configuration
@@ -85,33 +72,31 @@ void setup() {
   DEBUG_STARTUP_PRINT("Smart Espresso Machine Starting");
   DEBUG_STARTUP_PRINT("========================================");
 
-  // EEPROM initialization
-  EEPROM.begin(EEPROM_SIZE);
-
   // Retrieve stored goal weight and offset from EEPROM
-  shot.goal_weight = EEPROM.read(WEIGHT_ADDR);
-  shot.weight_offset = EEPROM.read(OFFSET_ADDR) / 10.0;
+  EEPROM.begin(EEPROM_SIZE);
+  shot.goalWeight = EEPROM.read(WEIGHT_ADDR);
+  shot.weightOffset = EEPROM.read(OFFSET_ADDR) / 10.0f;
 
-  DEBUG_STARTUP_PRINT("Goal Weight retrieved: %.0f g", shot.goal_weight);
-  DEBUG_STARTUP_PRINT("Offset retrieved: %.1f g", shot.weight_offset);
+  DEBUG_STARTUP_PRINT("Goal Weight retrieved: %.0f g", shot.goalWeight);
+  DEBUG_STARTUP_PRINT("Offset retrieved: %.1f g", shot.weightOffset);
 
   // Validate EEPROM values; use defaults if unreasonable
-  if ((shot.goal_weight < 10) || (shot.goal_weight > 200)) {
-    shot.goal_weight = 36;
+  if ((shot.goalWeight < 10) || (shot.goalWeight > 200)) {
+    shot.goalWeight = 36;
     DEBUG_STARTUP_PRINT("Goal Weight out of range, set to default: 36 g");
   }
-  if (shot.weight_offset > MAX_OFFSET) {
-    shot.weight_offset = 1.5;
+  if (shot.weightOffset > MAX_OFFSET) {
+    shot.weightOffset = 1.5f;
     DEBUG_STARTUP_PRINT("Offset out of range, set to default: 1.5 g");
   }
 
   // GPIO pin initialization
   pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(button_read, INPUT_PULLUP);      // Button input
-  pinMode(PRESS_BUTTON_PIN, OUTPUT);            // Button output (opto-isolated)
-  pinMode(DIMMER_PIN, OUTPUT);     // Dimmer PWM output
+  pinMode(BUTTON_INPUT_PIN, INPUT_PULLUP);  // Button input
+  pinMode(PRESS_BUTTON_PIN, OUTPUT);        // Button output (opto-isolated)
+  pinMode(DIMMER_PIN, OUTPUT);              // Dimmer PWM output
 
-  // Display pins (for future display integration - configured as inputs to avoid conflicts)
+  // Display pins (for future display integration)
   pinMode(TFT_CLK, OUTPUT);
   pinMode(TFT_MOSI, OUTPUT);
   pinMode(TFT_MISO, INPUT);
@@ -122,15 +107,14 @@ void setup() {
   DEBUG_STARTUP_PRINT("Display pins configured (ready for SPI display)");
 
   // Initialize encoder (half-quad mode for 2-pin configuration)
-  //ESP32Encoder::useInternalWeakPullResistors = GPIO_PULLUP_ONLY;
-  encoder.attachHalfQuad(encoderPinA, encoderPinB);
+  encoder.attachHalfQuad(ENCODER_PIN_A, ENCODER_PIN_B);
   encoder.setCount(0);
   DEBUG_STARTUP_PRINT("Encoder initialized (half-quad mode)");
- 
-  // Initialize PWM for dimmer control (Channel 0: Pump dimmer)
-  ledcSetup(pwmChannel, freq, resolution);
-  ledcAttachPin(DIMMER_PIN, pwmChannel);
-  ledcWrite(pwmChannel, 255);  // Start with pump at FULL SPEED (idle state)
+
+  // Initialize PWM for dimmer control (channel 0: pump dimmer)
+  ledcSetup(PWM_CHANNEL, PWM_FREQUENCY_HZ, PWM_RESOLUTION_BITS);
+  ledcAttachPin(DIMMER_PIN, PWM_CHANNEL);
+  ledcWrite(PWM_CHANNEL, 255);  // Start with pump at FULL SPEED (idle state)
   DEBUG_STARTUP_PRINT("PWM dimmer initialized (50Hz, 8-bit) - Pump at 100%% (idle)");
 
   #if !TESTING_MODE_NO_SCALE
@@ -140,7 +124,7 @@ void setup() {
   DEBUG_STARTUP_PRINT("Bluetooth initialized for scale connection");
   #else
   DEBUG_STARTUP_PRINT("TESTING MODE: Scale/BLE connection disabled");
-  scaleConnected = true;  // pretend connected so the dashboard start button works
+  scaleConnected = true;  // Pretend connected so the dashboard start button works
   #endif
 
   // Shot history buffer (RAM-only, read by the web server)
@@ -149,7 +133,7 @@ void setup() {
   // WiFi and web server (LAN dashboard). Boot continues without the
   // dashboard if WiFi is unavailable (15s timeout).
   if (initializeWiFi()) {
-    initializeServer(&shot, &pressurePID);
+    initializeServer(&pressurePID);
   }
 
   // Run the real-time control loop as its own FreeRTOS task on core 1 with
@@ -168,6 +152,9 @@ void setup() {
   DEBUG_STARTUP_PRINT("Setup Complete");
 }
 
+// ============================================================================
+// STATUS LOGGING
+// ============================================================================
 
 void printScalePressureStatus() {
   static unsigned long lastStatusMs = 0;
@@ -178,20 +165,12 @@ void printScalePressureStatus() {
     return;
   }
   lastStatusMs = millis();
+
   int raw = analogRead(PRESSURE_PIN);
   float voltage = raw * (3.3f / 4095.0f);
-  float pressure = 0.0f;
-  if (voltage < 0.4f) {
-    pressure = 0.0f;
-  } else if (voltage > 3.3f) {
-    pressure = 16.0f;
-  } else {
-    pressure = (voltage - 0.4f) * (16.0f / (3.3f - 0.4f));
-  }
-
-
-
-  DEBUG_SENSOR_PRINT("Pressure raw: %d | voltage: %.2f V | pressure: %.2f bar", raw, voltage, pressure);
+  float pressure = pressureBarFromVoltage(voltage);
+  DEBUG_SENSOR_PRINT("Pressure raw: %d | voltage: %.2f V | pressure: %.2f bar",
+                     raw, voltage, pressure);
 }
 
 // Re-print the dashboard URL every 10s so it can't scroll away in the log
@@ -234,7 +213,7 @@ void controlIteration() {
   } else if (scaleNewWeight) {
     scaleNewWeight = false;
 
-    DEBUG_SCALE_PRINT("Weight: %.1f g | Offset: %.1f g", currentWeight, shot.weight_offset);
+    DEBUG_SCALE_PRINT("Weight: %.1f g | Offset: %.1f g", currentWeight, shot.weightOffset);
 
     // Update shot trajectory with new weight datapoint
     updateShotTrajectory(&shot, currentWeight);
@@ -280,7 +259,7 @@ void controlIteration() {
     if (shot.brewing) {
       DEBUG_SHOT_PRINT("Shot stop requested via web - pressing machine button");
       shot.brewing = false;
-      shot.end = ENDTYPE::WEB;  // pulses the machine button like WEIGHT/TIME
+      shot.end = EndType::WEB;  // Pulses the machine button like WEIGHT/TIME
       setBrewingState(false);
     }
   }
@@ -289,49 +268,42 @@ void controlIteration() {
     if (shot.brewing) {
       DEBUG_SHOT_PRINT("Shot reset requested via web - machine button untouched");
       shot.brewing = false;
-      shot.end = ENDTYPE::BUTTON;  // BUTTON end skips the machine pulse
+      shot.end = EndType::BUTTON;  // BUTTON end skips the machine pulse
       setBrewingState(false);
     }
   }
 
   // ========================================================================
-  // PUMP DIMMER CONTROL (Auto during shot, 100% when idle)
+  // PUMP DIMMER CONTROL (PID during shot, 100% when idle)
   // ========================================================================
 
-  
-  
   long encoderPosition = encoder.getCount();
-  encoderAdjustment = constrain(encoderPosition, 0, 255);
 
+  int pwmValue = 255;
   if (!shot.brewing) {
     // IDLE STATE: Pump at full speed (100% = 255)
-    finalPwmValue = 255;
+    pwmValue = 255;
   } else if (shot.datapoints == 0) {
     // Shot just started, no pressure data yet - reset PID and run full power
     pressurePID.reset();
-    finalPwmValue = 255;
-    DEBUG_ENCODER_PRINT("BREWING - waiting for pressure data, PWM: %d", finalPwmValue);
+    pwmValue = 255;
+    DEBUG_ENCODER_PRINT("BREWING - waiting for pressure data, PWM: %d", pwmValue);
   } else {
     // BREWING STATE: PID control for pressure regulation
-    float goalPressure = shot.current_goal_pressure;
-    finalPwmValue = pressurePID.calculate(goalPressure, shot.pressure);
+    float goalPressure = shot.currentGoalPressure;
+    pwmValue = pressurePID.calculate(goalPressure, shot.pressure);
     DEBUG_ENCODER_PRINT("BREWING - target %.1f bar, current %.1f bar, PWM: %d",
-      goalPressure, shot.pressure, finalPwmValue);
+                        goalPressure, shot.pressure, pwmValue);
   }
-  
 
-  
-  DEBUG_ENCODER_PRINT("Encoder count: %ld | PWM output: %d", encoderPosition, finalPwmValue);
-  
-
+  DEBUG_ENCODER_PRINT("Encoder count: %ld | PWM output: %d", encoderPosition, pwmValue);
   if (!shot.brewing) {
     DEBUG_ENCODER_PRINT("IDLE - Pump at 100%% (255) | Encoder: %ld", encoderPosition);
   }
-  
 
   // Apply final PWM value to dimmer and publish it for the web dashboard
-  ledcWrite(pwmChannel, finalPwmValue);
-  shot.pump_pwm = finalPwmValue;
+  ledcWrite(PWM_CHANNEL, pwmValue);
+  shot.pumpPwm = pwmValue;
 
   // ========================================================================
   // BUTTON AND SHOT STATE MANAGEMENT
@@ -341,7 +313,6 @@ void controlIteration() {
   handleButtonLogic();
 
   printScalePressureStatus();
-
   printWifiStatus();
 
   // Monitor for maximum shot duration (safety timeout)
@@ -409,7 +380,7 @@ void scaleTask(void* param) {
     if (scaleStartSequenceRequest) {
       scaleStartSequenceRequest = false;
       scale.resetTimer();
-      vTaskDelay(pdMS_TO_TICKS(50));  // let the scale process each command
+      vTaskDelay(pdMS_TO_TICKS(50));  // Let the scale process each command
       scale.startTimer();
       if (AUTOTARE) {
         vTaskDelay(pdMS_TO_TICKS(50));
@@ -445,7 +416,7 @@ void loop() {
     }
   } else if (!serverStarted) {
     // WiFi came up after boot timed out - start the dashboard now
-    initializeServer(&shot, &pressurePID);
+    initializeServer(&pressurePID);
   }
   vTaskDelay(pdMS_TO_TICKS(1000));
 }

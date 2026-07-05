@@ -2,7 +2,6 @@
 #define PID_CONTROLLER_H
 
 #include <Arduino.h>
-#include "debug.h"
 
 // ============================================================================
 // PID CONTROLLER FOR PRESSURE CONTROL
@@ -14,7 +13,7 @@
 
 class PIDController {
 public:
-  // PID gains
+  // PID gains (public so the web dashboard can tune them live)
   float kp;  // Proportional gain
   float ki;  // Integral gain
   float kd;  // Derivative gain
@@ -26,80 +25,18 @@ public:
   // Anti-windup limit for integral term
   float integralMax;
 
-  PIDController(float kp = 25.0f, float ki = 0.5f, float kd = 8.0f)
-    : kp(kp), ki(ki), kd(kd),
-      outputMin(77),       // 30% floor: min power to prevent backflow/pump shutoff
-      outputMax(255),     // Full power maximum
-      integralMax(100.0f),
-      integral(0.0f),
-      previousError(0.0f),
-      lastTimeMs(0),
-      lastPTerm(0.0f),
-      lastITerm(0.0f),
-      lastDTerm(0.0f),
-      lastOutput(0) {}
+  PIDController(float kp = 25.0f, float ki = 0.5f, float kd = 8.0f);
 
   // Reset PID state (call when starting a new shot)
-  void reset() {
-    integral = 0.0f;
-    previousError = 0.0f;
-    lastTimeMs = millis();
-    lastPTerm = 0.0f;
-    lastITerm = 0.0f;
-    lastDTerm = 0.0f;
-    lastOutput = 0;
-  }
+  void reset();
 
-  // Calculate PID output
-  // setpoint: target pressure (bar)
-  // measurement: current pressure (bar)
-  // Returns: PWM value (outputMin to outputMax)
-  int calculate(float setpoint, float measurement) {
-    unsigned long now = millis();
-    float dt = (now - lastTimeMs) / 1000.0f;  // Convert to seconds
-
-    // Prevent division by zero on first call or very fast loops
-    if (dt <= 0.0f || lastTimeMs == 0) {
-      lastTimeMs = now;
-      return outputMax;  // Default to full power on first call
-    }
-
-    // Calculate error (positive = need more pressure)
-    float error = setpoint - measurement;
-
-    // Proportional term
-    float pTerm = kp * error;
-
-    // Integral term with anti-windup clamping
-    integral += error * dt;
-    integral = constrain(integral, -integralMax, integralMax);
-    float iTerm = ki * integral;
-
-    // Derivative term (on error)
-    float derivative = (error - previousError) / dt;
-    float dTerm = kd * derivative;
-
-    // Save state for next iteration
-    previousError = error;
-    lastTimeMs = now;
-
-    // Calculate output: center at 128, add PID correction
-    float output = 128.0f + pTerm + iTerm + dTerm;
-
-    // Constrain to safe PWM range
-    int pwmValue = constrain((int)round(output), outputMin, outputMax);
-
-    // Store terms for external monitoring (web dashboard)
-    lastPTerm = pTerm;
-    lastITerm = iTerm;
-    lastDTerm = dTerm;
-    lastOutput = pwmValue;
-
-    DEBUG_ENCODER_PRINT("PID: err=%.2f P=%.1f I=%.1f D=%.1f -> PWM=%d",
-                        error, pTerm, iTerm, dTerm, pwmValue);
-
-    return pwmValue;
-  }
+  /**
+   * @brief Calculate the PID output for one control iteration.
+   * @param setpoint Target pressure (bar).
+   * @param measurement Current pressure (bar).
+   * @return PWM value constrained to [outputMin, outputMax].
+   */
+  int calculate(float setpoint, float measurement);
 
   // Last computed terms and output (for web dashboard / tuning)
   float getPTerm() const { return lastPTerm; }
@@ -111,18 +48,16 @@ public:
   float getIntegral() const { return integral; }
 
   // Manually adjust integral (for bumpless transfer or preloading)
-  void setIntegral(float value) {
-    integral = constrain(value, -integralMax, integralMax);
-  }
+  void setIntegral(float value);
 
 private:
-  float integral;        // Accumulated error
-  float previousError;   // Previous error for derivative
+  float integral;            // Accumulated error
+  float previousError;       // Previous error for derivative
   unsigned long lastTimeMs;  // Last calculation time
-  float lastPTerm;       // Last proportional term (monitoring)
-  float lastITerm;       // Last integral term (monitoring)
-  float lastDTerm;       // Last derivative term (monitoring)
-  int lastOutput;        // Last constrained PWM output (monitoring)
+  float lastPTerm;           // Last proportional term (monitoring)
+  float lastITerm;           // Last integral term (monitoring)
+  float lastDTerm;           // Last derivative term (monitoring)
+  int lastOutput;            // Last constrained PWM output (monitoring)
 };
 
 #endif // PID_CONTROLLER_H

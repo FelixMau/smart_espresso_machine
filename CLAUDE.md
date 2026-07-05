@@ -41,16 +41,19 @@ The system uses **linear regression** to predict when shots reach target weight 
 
 ### Source Layout (everything lives in `src/`)
 
+Modules are `.h`/`.cpp` pairs: declarations (types, `extern` globals, function
+prototypes) in the header, definitions in the source file.
+
 | File | Lines | Purpose |
 |------|-------|---------|
-| `main.cpp` | ~450 | Entry point: setup, FreeRTOS tasks (control + scale), WiFi watchdog loop |
-| `shot_stopper.h` | ~420 | Core brewing logic: `Shot` struct, button state machine, regression, EEPROM learning |
-| `webserver.h` | ~290 | Async REST API (`/state`, start/stop, PID tuning, pressure profiles, shot history) |
+| `main.cpp` | ~420 | Entry point: setup, FreeRTOS tasks (control + scale), WiFi watchdog loop |
+| `shot_stopper.h/.cpp` | ~180/~340 | Core brewing logic: `Shot` struct, button state machine, regression, EEPROM learning |
+| `webserver.h/.cpp` | ~35/~350 | Async REST API (`/state`, start/stop, PID tuning, pressure profiles, shot history) |
 | `dashboard.h` | ~340 | Embedded single-page dashboard (PROGMEM HTML, Chart.js from CDN, polls `/state` every 500 ms) |
-| `pid_controller.h` | ~130 | PID class for pressure control (anti-windup, output floor to prevent pump shutoff) |
-| `shot_history.h` | ~95 | RAM-only ring buffer of last 5 shots, downsampled to 100 points each |
-| `debug.h` | ~90 | Category-based serial debug macros (`DEBUG_SHOT_PRINT`, `DEBUG_SCALE_PRINT`, ...) |
-| `secrets.h` | 1 | WiFi credentials (`ssid`, `password`) — must NOT be committed |
+| `pid_controller.h/.cpp` | ~65/~75 | PID class for pressure control (anti-windup, output floor to prevent pump shutoff) |
+| `shot_history.h/.cpp` | ~45/~70 | RAM-only ring buffer of last 5 shots, downsampled to 100 points each |
+| `debug.h` | ~70 | Category-based serial debug macros (`DEBUG_SHOT_PRINT`, `DEBUG_SCALE_PRINT`, ...) |
+| `secrets.h` | 1 | WiFi credentials (`ssid`, `password`) — must NOT be committed. Include AFTER the WiFi headers: the macros clobber their parameter names otherwise |
 
 ### FreeRTOS Task Structure (main.cpp)
 
@@ -66,35 +69,35 @@ Cross-task communication is via `volatile` flags declared in shot_stopper.h / we
 ### Core Data Structure: `struct Shot` (shot_stopper.h)
 
 Central state object tracking:
-- Brew timing (`shot_timer`, `expected_end_s`, `end_s`)
-- Weight measurements (`weight[1000]`, `time_s[1000]`, `datapoints`)
-- Pressure readings (`pressure`, `peak_pressure`) and goals (`current_goal_pressure`, profiles)
-- User parameters (`goal_weight`, `weight_offset`)
-- Status (`brewing`, `pump_pwm`) and end reason (`ENDTYPE`: `BUTTON`, `WEIGHT`, `TIME`, `WEB`, `UNDEF`)
+- Brew timing (`shotTimer`, `expectedEndS`, `endS`)
+- Weight measurements (`weight[MAX_SHOT_DATAPOINTS]`, `timeS[MAX_SHOT_DATAPOINTS]`, `datapoints`)
+- Pressure readings (`pressure`, `peakPressure`) and goals (`currentGoalPressure`, profiles)
+- User parameters (`goalWeight`, `weightOffset`)
+- Status (`brewing`, `pumpPwm`) and end reason (`enum class EndType`: `BUTTON`, `WEIGHT`, `TIME`, `WEB`, `UNDEF`)
 
 A global `Shot shot` instance is shared across modules.
 
 ### Key Algorithms
 
-**Linear Regression Prediction** (shot_stopper.h:calculateEndTime)
-- Fits line to last `datapoints_trend_line` (10) weight-vs-time datapoints
-- Predicts: `expected_end_s = (goal_weight - weight_offset - b) / m`
+**Linear Regression Prediction** (shot_stopper.cpp:calculateEndTime)
+- Fits line to last `TREND_LINE_DATAPOINTS` (10) weight-vs-time datapoints
+- Predicts: `expectedEndS = (goalWeight - weightOffset - b) / m`
 - Only calculates after 10+ measurements and weight > 10 g to avoid erratic predictions
 - Enables stopping shots before over-extraction
 
-**PID Pressure Control** (pid_controller.h + main.cpp:controlIteration)
-- During a shot, pump PWM = `pressurePID.calculate(shot.current_goal_pressure, shot.pressure)`
+**PID Pressure Control** (pid_controller.cpp + main.cpp:controlIteration)
+- During a shot, pump PWM = `pressurePID.calculate(shot.currentGoalPressure, shot.pressure)`
 - Default gains Kp=25, Ki=0.5, Kd=8; live-tunable via web (`/set_pid`)
 - Output floor prevents pump shutoff; anti-windup on integral term
 - Idle state: pump at 100 % (PWM 255)
 
-**Pressure Profiles** (shot_stopper.h:updateShotTrajectory)
+**Pressure Profiles** (shot_stopper.cpp:updateShotTrajectory)
 - Two goal lists, up to `MAX_PRESSURE_GOALS` (8) each:
   - **By time**: seconds from shot start (default: 2 bar @ 0 s → 9 bar @ 5 s → 6 bar @ 20 s)
   - **By time-left**: overrides based on predicted remaining time (default: 4 bar for last 5 s)
 - Set via web as comma lists; negative times encode "time left"
 
-**Button State Machine** (shot_stopper.h:handleButtonLogic)
+**Button State Machine** (shot_stopper.cpp:handleButtonLogic)
 - Four states: IDLE → PRESSED → [HELD] → RELEASED
 - Debouncing via 8-sample majority array read every 5 ms
 - Supports two machine types (`MOMENTARY` define):
@@ -102,7 +105,7 @@ A global `Shot shot` instance is shared across modules.
   - **Latching switches** (Linea Mini): press starts, system latches OUT after `MIN_SHOT_DURATION_S`
 - `REEDSWITCH` alternative input supported
 
-**EEPROM Auto-Learning** (shot_stopper.h:detectShotError)
+**EEPROM Auto-Learning** (shot_stopper.cpp:detectShotError)
 - Post-shot analysis `DRIP_DELAY_S` (3 s) after completion
 - If measured weight error ≤ `MAX_OFFSET` (5 g) from goal: learns offset for next shot, saves to EEPROM
 - Larger errors are rejected as outliers
@@ -112,15 +115,15 @@ A global `Shot shot` instance is shared across modules.
 Defined in shot_stopper.h and main.cpp:
 
 ```cpp
-#define BUTTON_READ_PIN 34   // Button input (active low; REED_IN 25 if REEDSWITCH)
-#define OUT 22               // Button output (opto-coupled to machine)
-#define PRESSURE_PIN 32      // ADC input, MPX5500: P = (V - 0.4) * 16 / (3.3 - 0.4) bar
-const int DIMMER_PIN = 5;    // Pump dimmer PWM (50 Hz, 8-bit, LEDC channel 0)
+#define BUTTON_READ_PIN 13       // Button input, active low (34 on ESP32-S3; REED_IN 25 if REEDSWITCH)
+#define PRESS_BUTTON_PIN 22      // Button output (opto-coupled to machine)
+#define PRESSURE_PIN 32          // ADC input, MPX5500: P = (V - 0.4) * 16 / (3.3 - 0.4) bar
+const int DIMMER_PIN = 5;        // Pump dimmer PWM (50 Hz, 8-bit, LEDC channel 0), main.cpp
 // Encoder: GPIO 23 (A), GPIO 25 (B), half-quad mode
 // Display SPI (reserved, not yet driven): CLK 18, MOSI 19, MISO 21, CS 17, DC 16, RST 14, BL 2
 ```
 
-Note: `DIMMER_PIN` is `extern` in shot_stopper.h and defined in main.cpp — keep them consistent.
+`BUTTON_INPUT_PIN` (shot_stopper.cpp) is the active input: `REED_IN` when `REEDSWITCH`, else `BUTTON_READ_PIN`.
 
 ### Web Server (webserver.h)
 
@@ -159,7 +162,7 @@ build_flags = -std=c++17
 #define AUTOTARE true          // Auto-tare scale at shot start
 #define MIN_SHOT_DURATION_S 3  // Ignore flushes shorter than this
 #define MAX_SHOT_DURATION_S 50 // Safety timeout to prevent stuck pump
-#define datapoints_trend_line 10 // Regression window (accuracy vs latency)
+#define TREND_LINE_DATAPOINTS 10 // Regression window (accuracy vs latency)
 ```
 
 Debug output is controlled per category in debug.h (`DEBUG_ENABLED`, `DEBUG_SHOT`, `DEBUG_SCALE`, ...).
