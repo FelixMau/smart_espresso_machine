@@ -2,9 +2,23 @@
 
 A hobby project to digitalise and IoT-enable my **Dalla Corte Mini** espresso machine (and maybe other machines in the future).
 
-Unlike the [Gaggiuino Project](https://gaggiuino.github.io/#/?id=home), the goal here is **not** to replace the machine's original controls but to **extend** them. This way we don't have to mingle so much with high voltages, and the machine stays fully restorable to stock.
+Unlike [Gaggiuino](https://gaggiuino.github.io/#/?id=home) or [GaggiMate](https://gaggimate.eu/), the goal here is **not** to replace the machine's original controls but to **extend** them. This way we don't have to mingle so much with high voltages, and the machine stays fully restorable to stock.
 
 An ESP32 reads a Bluetooth scale and a pressure sensor, drives the pump via a PWM dimmer with a PID pressure controller, and uses linear regression to predict when a shot reaches its target weight — stopping extraction at the optimal moment. Everything is monitored and controlled live from a web dashboard on the LAN.
+
+## How this compares to Gaggiuino & GaggiMate
+
+Both projects turn cheap single-boiler machines (Gaggia Classic, Rancilio Silvia) into smart ones by taking over the heater, pump and steam control. This project serves a different niche:
+
+| | Gaggiuino / GaggiMate | This project |
+|---|---|---|
+| Target machine | Single-boiler entry-level | Dual-boiler prosumer (Dalla Corte Mini) |
+| Integration | Replaces the machine's controls | Extends them (opto-isolated button presses) — restorable to stock |
+| Temperature & steam | PID heater + steam control | Not needed — the dual boiler already does this |
+| Display | Installed touchscreen | Headless — a spare phone / any browser is the screen |
+| Brew by weight | Yes | Yes, with regression-based predictive stop and auto-learned drip offset |
+| Pressure profiling | Yes (Gaggiuino also flow) | Yes — time-based profiles with PID pump control |
+| App integration | Beanconqueror (Gaggiuino) | Beanconqueror, via Gaggiuino-compatible API |
 
 ## Dashboard
 
@@ -29,6 +43,19 @@ Live monitoring, start/stop/reset, PID tuning, goal weight and pressure profile 
 - [x] Async web dashboard: live tiles, charts, control and tuning
 - [ ] Pressure sensor readings shown on a simple on-device display
 - [ ] Design cases for PCB, display, knob
+- [ ] Design import to beanconqueror -> custom machine
+should be able to start shot via app
+- [ ] Implement correct zero crosing detection and update pwm control accordingly
+- [ ] Cleaning mode/cycle for descale and for detergent
+- [ ] If no Wifi is available advertise own wifi and on it the webserver to do the same as on the local network
+- [ ] Add another (manual)pressuresensor to evaluate accuracy of messurements, they sometimes feel a little off or I should adjust the expansionvalve
+
+### Future tasks:
+
+- [ ] Check on 230V safety and how to design properly with 230V on a espressomachine (that uses heats up water and puts it under pressure)
+- [ ] Expose machine to internet? IDK this leads to many questions needing answeres such as how and which ports would need to be opened? Xiaomi robo cleaner does that somehow but I dont know how yet. Also password would be needed to log in -> or some local setup would provide a "password" via the app internally but all of this seems like a hustle for just the little benefit of no need to connect to local wifi....
+
+
 
 ## Working details
 
