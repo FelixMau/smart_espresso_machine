@@ -4,7 +4,7 @@
 .vscode/launch.json
 .vscode/ipch
 nul
-.claude/
+.claude/*
 pitch_kaffeemacher.md
 
 # KiCad working files
@@ -15,3 +15,5 @@ pcb/*-bak
 # WiFi credentials — never commit (use secrets.h.example as template)
 src/secrets.h
 test/secrets.h
+beanconqueror-interop-plan.md
+beanconqueror-gaggiuino-integration.md

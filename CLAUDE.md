@@ -135,6 +135,7 @@ WiFi connects with a 15 s boot timeout; the firmware runs fine without it. REST 
 - `GET /set_weight_offset?value=` (0–5 g, persisted to EEPROM)
 - `GET /set_pressure_profile?times=T1,T2&pressures=P1,P2` — positive T = from start, negative T = time-left override
 - `GET /shots` — history list (newest first), `GET /shot?id=N` — downsampled trajectory
+- `GET /api/system/status`, `/api/shots/latest`, `/api/shots/{id}` — Gaggiuino-compatible API so Beanconqueror imports shots post-brew (add ESP IP as a `GAGGIUINO` preparation device; datapoint values are ints ×10; flow derived from weight, temperature zero-filled; `/api/shots/latest` must stay registered before the `/api/shots/*` wildcard; shot JSON MUST include nested `profile.name` — BQ's import modal silently drops shots without it)
 
 Dashboard features: live tiles, start/stop/reset, PID sliders, goal weight/offset editors, pressure profile editor, live Chart.js plots, shot history comparison. Chart.js loads from CDN, so the *client browser* needs internet; the ESP does not.
 

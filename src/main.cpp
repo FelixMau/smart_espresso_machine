@@ -108,7 +108,7 @@ void setup() {
   // GPIO pin initialization
   pinMode(LED_BUILTIN, OUTPUT);
   pinMode(button_read, INPUT_PULLUP);      // Button input
-  pinMode(OUT, OUTPUT);            // Button output (opto-isolated)
+  pinMode(PRESS_BUTTON_PIN, OUTPUT);            // Button output (opto-isolated)
   pinMode(DIMMER_PIN, OUTPUT);     // Dimmer PWM output
 
   // Display pins (for future display integration - configured as inputs to avoid conflicts)
@@ -263,12 +263,12 @@ void controlIteration() {
       DEBUG_SHOT_PRINT("Shot start requested via web - pressing machine button");
       if (MOMENTARY) {
         // Pulse the opto-coupled button to start the machine
-        digitalWrite(OUT, HIGH);
+        digitalWrite(PRESS_BUTTON_PIN, HIGH);
         delay(1000);
-        digitalWrite(OUT, LOW);
+        digitalWrite(PRESS_BUTTON_PIN, LOW);
       } else {
         // Latching machine: hold the brew line via the output pin
-        digitalWrite(OUT, HIGH);
+        digitalWrite(PRESS_BUTTON_PIN, HIGH);
         buttonLatched = true;
       }
       shot.brewing = true;

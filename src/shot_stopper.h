@@ -33,9 +33,18 @@
 #define DEBUGMODE_ACAIA false
 //***************
 
-// Board Hardware 
-#define BUTTON_READ_PIN          34
-#define OUT         22
+// Board Hardware
+// Button input pin is board-dependent. On the classic ESP32 (upesy_wroom) the
+// brew button (schematic net "IN") is wired to GPIO13, which supports the
+// internal pull-up that pinMode(..., INPUT_PULLUP) relies on. GPIO34 is
+// input-only and has NO internal pull-up on the classic ESP32, so reading the
+// button there leaves the pin floating and presses go undetected.
+#ifdef ARDUINO_ESP32S3_DEV
+  #define BUTTON_READ_PIN        34
+#else
+  #define BUTTON_READ_PIN        13
+#endif
+#define PRESS_BUTTON_PIN         22
 #define REED_IN     25
 
 
@@ -94,6 +103,7 @@ struct Shot {
   float expected_end_s;
   float weight[1000];
   float time_s[1000];
+  float pressure_trace[1000]; // per-datapoint pressure, kept for shot history / Beanconqueror export
   int datapoints;
   bool brewing;
   ENDTYPE end;
@@ -122,6 +132,7 @@ Shot shot = {
   0, // expected_end_s
   {}, // weight
   {}, // time_s
+  {}, // pressure_trace
   0, // datapoints
   false, // brewing
   ENDTYPE::UNDEF, // end
@@ -229,7 +240,7 @@ void setBrewingState(bool brewing) {
     // Snapshot the trajectory into the history ring buffer before the next
     // shot overwrites it. Skip flushes shorter than MIN_SHOT_DURATION_S.
     if (shot.end_s >= MIN_SHOT_DURATION_S) {
-      recordShot(shot.time_s, shot.weight, shot.datapoints,
+      recordShot(shot.time_s, shot.weight, shot.pressure_trace, shot.datapoints,
                  shot.end_s, shot.peak_pressure, (int)shot.end);
     }
 
@@ -238,15 +249,15 @@ void setBrewingState(bool brewing) {
       (ENDTYPE::WEIGHT == shot.end || ENDTYPE::TIME == shot.end || ENDTYPE::WEB == shot.end)){
       //Pulse button to stop brewing
       DEBUG_SHOT_PRINT("Writing solenoid HIGH");
-      digitalWrite(OUT,HIGH);
+      digitalWrite(PRESS_BUTTON_PIN,HIGH);
       delay(1000);
       DEBUG_SHOT_PRINT("Writing solenoid LOW");
-      digitalWrite(OUT,LOW);
+      digitalWrite(PRESS_BUTTON_PIN,LOW);
     }else if(!MOMENTARY){
       buttonLatched = false;
       buttonPressed = false;
       DEBUG_SHOT_PRINT("Button unlatched and not pressed");
-      digitalWrite(OUT,LOW);
+      digitalWrite(PRESS_BUTTON_PIN,LOW);
     }
   } 
 
@@ -262,6 +273,7 @@ void updateShotTrajectory(Shot* shot, float currentWeight) {
     }
     shot->time_s[shot->datapoints] = seconds_f() - shot->start_timestamp_s;
     shot->weight[shot->datapoints] = currentWeight;
+    shot->pressure_trace[shot->datapoints] = shot->pressure;
     shot->shot_timer = shot->time_s[shot->datapoints];
     shot->datapoints++;
 
@@ -395,7 +407,7 @@ void handleButtonLogic() {
         buttonState = HELD;
         buttonLatched = true;
         DEBUG_BUTTON_PRINT("Writing solenoid HIGH");
-        digitalWrite(OUT, HIGH);
+        digitalWrite(PRESS_BUTTON_PIN, HIGH);
         if (AUTOTARE) {
           scaleTareRequest = true;
         }

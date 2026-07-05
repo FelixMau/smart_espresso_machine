@@ -2,6 +2,7 @@
 #define SHOT_HISTORY_H
 
 #include <Arduino.h>
+#include <time.h>
 #include "debug.h"
 
 // ============================================================================
@@ -18,6 +19,7 @@
 
 struct ShotRecord {
   uint32_t id;                        // Monotonically increasing shot number
+  uint32_t timestamp;                 // Unix epoch at shot end (0/near-1970 if NTP never synced)
   float duration_s;                   // Shot duration
   float finalWeight;                  // Weight at shot stop (before drip)
   float peakPressure;                 // Highest pressure seen during the shot
@@ -25,6 +27,7 @@ struct ShotRecord {
   int numPoints;                      // Valid points in the arrays below
   float time_s[HISTORY_MAX_POINTS];   // Downsampled time axis
   float weight[HISTORY_MAX_POINTS];   // Downsampled weight trajectory
+  float pressure[HISTORY_MAX_POINTS]; // Downsampled pressure trajectory
 };
 
 ShotRecord shotHistory[HISTORY_MAX_SHOTS];
@@ -42,8 +45,8 @@ void initShotHistory() {
 
 // Snapshot + downsample a finished shot's trajectory into the ring buffer.
 // endReason is the ENDTYPE value at shot end (before it gets reset).
-void recordShot(const float* time_s, const float* weight, int datapoints,
-                float duration_s, float peakPressure, int endReason) {
+void recordShot(const float* time_s, const float* weight, const float* pressure,
+                int datapoints, float duration_s, float peakPressure, int endReason) {
   if (datapoints <= 0) {
     return;
   }
@@ -55,6 +58,7 @@ void recordShot(const float* time_s, const float* weight, int datapoints,
 
   ShotRecord& rec = shotHistory[shotHistoryWriteIdx];
   rec.id = nextShotId++;
+  rec.timestamp = (uint32_t)time(nullptr);
   rec.duration_s = duration_s;
   rec.finalWeight = weight[datapoints - 1];
   rec.peakPressure = peakPressure;
@@ -66,6 +70,7 @@ void recordShot(const float* time_s, const float* weight, int datapoints,
   for (int i = 0; i < datapoints && m < HISTORY_MAX_POINTS; i += stride) {
     rec.time_s[m] = time_s[i];
     rec.weight[m] = weight[i];
+    rec.pressure[m] = pressure[i];
     m++;
   }
   if (rec.time_s[m - 1] != time_s[datapoints - 1]) {
@@ -74,6 +79,7 @@ void recordShot(const float* time_s, const float* weight, int datapoints,
     }
     rec.time_s[m - 1] = time_s[datapoints - 1];
     rec.weight[m - 1] = weight[datapoints - 1];
+    rec.pressure[m - 1] = pressure[datapoints - 1];
   }
   rec.numPoints = m;
 

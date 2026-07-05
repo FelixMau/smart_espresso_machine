@@ -66,6 +66,10 @@ bool initializeWiFi() {
   wifiConnected = (WiFi.status() == WL_CONNECTED);
   if (wifiConnected) {
     DEBUG_STARTUP_PRINT("WiFi connected, IP: %s", WiFi.localIP().toString().c_str());
+    // SNTP for real shot timestamps in the Beanconqueror export; syncs in the
+    // background and is harmless if the NTP server is unreachable (timestamps
+    // then stay near the 1970 epoch)
+    configTime(0, 0, "pool.ntp.org");
   } else {
     DEBUG_STARTUP_PRINT("WiFi connection failed after %d ms - web dashboard disabled",
                         WIFI_CONNECT_TIMEOUT_MS);
@@ -75,6 +79,10 @@ bool initializeWiFi() {
 
 void initializeServer(Shot* s, PIDController* pid) {
   webPid = pid;
+
+  // Permissive CORS so Beanconqueror's webview can reach the /api endpoints;
+  // harmless for the dashboard (LAN-only, no credentials anywhere)
+  DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 
   // Dashboard page
   server.on("/", HTTP_GET, [](AsyncWebServerRequest* req) {
@@ -271,6 +279,91 @@ void initializeServer(Shot* s, PIDController* pid) {
     }
     if (!found) {
       req->send(404, "text/plain", "shot not found");
+      return;
+    }
+    AsyncResponseStream* res = req->beginResponseStream("application/json");
+    serializeJson(doc, *res);
+    req->send(res);
+  });
+
+  // ==========================================================================
+  // BEANCONQUEROR INTEGRATION (Gaggiuino REST API emulation)
+  // ==========================================================================
+  // Beanconqueror reaches WiFi machines through its preparationDevice layer;
+  // we speak the Gaggiuino dialect so the app needs no changes: add the ESP's
+  // LAN IP as a GAGGIUINO preparation device. BQ's Gaggiuino client has no
+  // polling loop - it imports the full shot graph once after a brew.
+  // Contract (gaggiuinoDevice.ts): every datapoint value is an integer of
+  // real value x 10; BQ divides by 10 on import.
+
+  // Connection/validity check: BQ only checks for HTTP 200, body is ignored
+  server.on("/api/system/status", HTTP_GET, [](AsyncWebServerRequest* req) {
+    req->send(200, "application/json", "{\"status\":\"ok\"}");
+  });
+
+  // BQ reads responseJSON[0].lastShotId; id 0 = no shots yet (fetch will 404)
+  server.on("/api/shots/latest", HTTP_GET, [](AsyncWebServerRequest* req) {
+    uint32_t lastId = 0;
+    if (!shotHistoryLock || xSemaphoreTake(shotHistoryLock, pdMS_TO_TICKS(100)) == pdTRUE) {
+      if (shotHistoryCount > 0) {
+        int idx = (shotHistoryWriteIdx - 1 + HISTORY_MAX_SHOTS) % HISTORY_MAX_SHOTS;
+        lastId = shotHistory[idx].id;
+      }
+      if (shotHistoryLock) xSemaphoreGive(shotHistoryLock);
+    }
+    req->send(200, "application/json", "[{\"lastShotId\":" + String(lastId) + "}]");
+  });
+
+  // /api/shots/{id} - must be registered AFTER /api/shots/latest: handlers
+  // match in registration order and this wildcard would swallow "latest" too
+  server.on("/api/shots/*", HTTP_GET, [](AsyncWebServerRequest* req) {
+    uint32_t id = (uint32_t)req->url().substring(strlen("/api/shots/")).toInt();
+    JsonDocument doc;
+    bool found = false;
+    if (!shotHistoryLock || xSemaphoreTake(shotHistoryLock, pdMS_TO_TICKS(100)) == pdTRUE) {
+      for (int i = 0; i < shotHistoryCount; i++) {
+        ShotRecord& rec = shotHistory[i];
+        if (rec.id != id) {
+          continue;
+        }
+        doc["id"] = rec.id;
+        doc["timestamp"] = rec.timestamp;  // unix seconds (BQ renders via moment.unix)
+        // BQ's import modal reads the nested profile.name and silently skips
+        // the whole shot if it's missing; profileName alone is not enough
+        doc["profileName"] = "Smart Espresso";
+        doc["profile"]["name"] = "Smart Espresso";
+        JsonObject dp = doc["datapoints"].to<JsonObject>();
+        JsonArray t = dp["timeInShot"].to<JsonArray>();
+        JsonArray p = dp["pressure"].to<JsonArray>();
+        JsonArray f = dp["pumpFlow"].to<JsonArray>();
+        JsonArray w = dp["shotWeight"].to<JsonArray>();
+        JsonArray temp = dp["temperature"].to<JsonArray>();
+        for (int j = 0; j < rec.numPoints; j++) {
+          t.add((int)lroundf(rec.time_s[j] * 10));
+          p.add((int)lroundf(rec.pressure[j] * 10));
+          // No flow sensor: derive flow from the weight trajectory
+          // (g/s ~= ml/s for espresso), clamped against scale noise
+          float flow = 0;
+          if (j > 0) {
+            float dt = rec.time_s[j] - rec.time_s[j - 1];
+            if (dt > 0) {
+              flow = (rec.weight[j] - rec.weight[j - 1]) / dt;
+            }
+          }
+          if (flow < 0) {
+            flow = 0;
+          }
+          f.add((int)lroundf(flow * 10));
+          temp.add(0);  // no brew temperature sensor
+          w.add((int)lroundf(rec.weight[j] * 10));
+        }
+        found = true;
+        break;
+      }
+      if (shotHistoryLock) xSemaphoreGive(shotHistoryLock);
+    }
+    if (!found) {
+      req->send(404, "application/json", "{\"error\":\"shot not found\"}");
       return;
     }
     AsyncResponseStream* res = req->beginResponseStream("application/json");
