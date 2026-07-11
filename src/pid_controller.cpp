@@ -7,22 +7,26 @@ PIDController::PIDController(float kp, float ki, float kd)
     outputMin(77),   // 30% floor: min power to prevent backflow/pump shutoff
     outputMax(255),  // Full power maximum
     integralMax(100.0f),
+    outputSlewRate(300.0f),
     integral(0.0f),
-    previousError(0.0f),
+    previousMeasurement(0.0f),
+    derivativeFiltered(0.0f),
+    firstSample(true),
     lastTimeMs(0),
     lastPTerm(0.0f),
     lastITerm(0.0f),
     lastDTerm(0.0f),
-    lastOutput(0) {}
+    lastOutput(255) {}
 
 void PIDController::reset() {
   integral = 0.0f;
-  previousError = 0.0f;
+  derivativeFiltered = 0.0f;
+  firstSample = true;
   lastTimeMs = millis();
   lastPTerm = 0.0f;
   lastITerm = 0.0f;
   lastDTerm = 0.0f;
-  lastOutput = 0;
+  lastOutput = outputMax;  // Pump idles at 100%; slew down from there at shot start
 }
 
 int PIDController::calculate(float setpoint, float measurement) {
@@ -46,12 +50,15 @@ int PIDController::calculate(float setpoint, float measurement) {
   integral = constrain(integral, -integralMax, integralMax);
   float iTerm = ki * integral;
 
-  // Derivative term (on error)
-  float derivative = (error - previousError) / dt;
-  float dTerm = kd * derivative;
+  // Derivative on measurement (sign-flipped), so setpoint steps from the
+  // pressure profile don't kick the output; low-pass filtered against noise
+  float derivative = firstSample ? 0.0f : -(measurement - previousMeasurement) / dt;
+  firstSample = false;
+  derivativeFiltered += PID_DERIVATIVE_FILTER_ALPHA * (derivative - derivativeFiltered);
+  float dTerm = kd * derivativeFiltered;
 
   // Save state for next iteration
-  previousError = error;
+  previousMeasurement = measurement;
   lastTimeMs = now;
 
   // Calculate output: center at 128, add PID correction
@@ -59,6 +66,11 @@ int PIDController::calculate(float setpoint, float measurement) {
 
   // Constrain to safe PWM range
   int pwmValue = constrain((int)round(output), outputMin, outputMax);
+
+  // Slew-rate limit: ramp instead of jumping between power levels
+  int maxStep = max(1, (int)(outputSlewRate * dt));
+  pwmValue = constrain(pwmValue, lastOutput - maxStep, lastOutput + maxStep);
+  pwmValue = constrain(pwmValue, outputMin, outputMax);
 
   // Store terms for external monitoring (web dashboard)
   lastPTerm = pTerm;

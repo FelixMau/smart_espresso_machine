@@ -10,6 +10,15 @@
 // - Overshooting (damped by derivative term)
 // - Pump shutoff (enforced minimum PWM floor)
 // - Steady-state error (eliminated by integral term)
+//
+// Smoothness measures (the pump must never slam between power levels):
+// - Derivative acts on the measurement, not the error, so setpoint steps
+//   from the pressure profile don't kick the output
+// - The derivative is low-pass filtered against residual sensor noise
+// - The output is slew-rate limited to outputSlewRate counts per second
+
+// Low-pass factor for the derivative term (EMA per iteration at ~20 Hz)
+#define PID_DERIVATIVE_FILTER_ALPHA 0.3f
 
 class PIDController {
 public:
@@ -25,7 +34,11 @@ public:
   // Anti-windup limit for integral term
   float integralMax;
 
-  PIDController(float kp = 25.0f, float ki = 0.5f, float kd = 8.0f);
+  // Maximum output change in PWM counts per second (full range in ~0.6 s):
+  // fast enough for profile steps, slow enough that the pump ramps smoothly
+  float outputSlewRate;
+
+  PIDController(float kp = 15.0f, float ki = 1.0f, float kd = 5.0f);
 
   // Reset PID state (call when starting a new shot)
   void reset();
@@ -52,7 +65,9 @@ public:
 
 private:
   float integral;            // Accumulated error
-  float previousError;       // Previous error for derivative
+  float previousMeasurement; // Previous measurement for derivative-on-measurement
+  float derivativeFiltered;  // Low-pass filtered derivative
+  bool firstSample;          // No previous measurement yet (after reset)
   unsigned long lastTimeMs;  // Last calculation time
   float lastPTerm;           // Last proportional term (monitoring)
   float lastITerm;           // Last integral term (monitoring)

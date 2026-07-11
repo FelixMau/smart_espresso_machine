@@ -97,7 +97,16 @@ float pressureBarFromVoltage(float voltage) {
 void updatePressureSensor(Shot* s) {
   int raw = analogRead(PRESSURE_PIN);
   float voltage = raw * (3.3f / 4095.0f);
-  s->pressure = pressureBarFromVoltage(voltage);
+
+  // EMA-smoothed: called every control iteration (~50 ms), so the filter is
+  // always warm and the PID never sees raw ADC noise
+  static float filtered = 0.0f;
+  filtered += PRESSURE_FILTER_ALPHA * (pressureBarFromVoltage(voltage) - filtered);
+  s->pressure = filtered;
+
+  if (s->brewing && s->pressure > s->peakPressure) {
+    s->peakPressure = s->pressure;
+  }
   DEBUG_SENSOR_PRINT("Pressure: %.2f bar", s->pressure);
 }
 
@@ -177,10 +186,8 @@ void updateShotTrajectory(Shot* s, float weight) {
     return;
   }
 
-  updatePressureSensor(s);
-  if (s->pressure > s->peakPressure) {
-    s->peakPressure = s->pressure;
-  }
+  // s->pressure is sampled every control iteration (main.cpp); this just
+  // snapshots the latest filtered value at the scale's datapoint rate
   s->timeS[s->datapoints] = secondsSinceBoot() - s->startTimestampS;
   s->weight[s->datapoints] = weight;
   s->pressureTrace[s->datapoints] = s->pressure;

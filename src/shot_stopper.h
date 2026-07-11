@@ -61,6 +61,11 @@
 
 #define PRESSURE_PIN 32  // Analog pin for pressure sensor (MPX5500 or similar)
 
+// EMA smoothing factor for the pressure reading, sampled at the ~50 ms
+// control cadence (time constant ~0.2 s). Raw single ADC reads are noisy
+// and would feed straight into the PID derivative term.
+#define PRESSURE_FILTER_ALPHA 0.2f
+
 // Active button input: reed switch or brew button, depending on REEDSWITCH
 extern const int BUTTON_INPUT_PIN;
 

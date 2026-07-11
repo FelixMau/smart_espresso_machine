@@ -50,8 +50,11 @@ const int TFT_BL = 2;     // Backlight PWM (future)
 
 ESP32Encoder encoder;
 
-// PID controller for pressure regulation, live-tunable via the web dashboard
-PIDController pressurePID(25.0f, 0.5f, 8.0f);
+// PID controller for pressure regulation, live-tunable via the web dashboard.
+// Gentler defaults than the original 25/0.5/8: with the measurement now
+// sampled at 20 Hz and the derivative filtered, less gain is needed and the
+// old values limit-cycled (+/-2-3 bar swings every few seconds).
+PIDController pressurePID(15.0f, 1.0f, 5.0f);
 
 // Real-time control loop task (defined below), started from setup()
 void controlTask(void* param);
@@ -195,6 +198,16 @@ void printWifiStatus() {
 
 void controlIteration() {
   // ========================================================================
+  // PRESSURE SAMPLING (every iteration, ~20 Hz)
+  // ========================================================================
+  // The PID below must never act on a stale reading: sampling only at the
+  // scale's ~2 Hz weight rate made the measurement jump between control
+  // iterations, and the derivative term slammed the pump rail-to-rail on
+  // every jump (the root cause of "jumpy" pressure).
+
+  updatePressureSensor(&shot);
+
+  // ========================================================================
   // SCALE CONNECTION AND DATA POLLING
   // ========================================================================
 
@@ -222,13 +235,6 @@ void controlIteration() {
   // TESTING MODE: Skip scale connection and keep current weight at 0
   currentWeight = 0;
   #endif
-
-  // Keep the pressure reading fresh even when idle, so the web dashboard
-  // shows live pressure between shots (updateShotTrajectory only reads it
-  // while brewing)
-  if (!shot.brewing) {
-    updatePressureSensor(&shot);
-  }
 
   // ========================================================================
   // WEB DASHBOARD START/STOP REQUESTS

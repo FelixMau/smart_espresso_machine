@@ -87,8 +87,10 @@ A global `Shot shot` instance is shared across modules.
 
 **PID Pressure Control** (pid_controller.cpp + main.cpp:controlIteration)
 - During a shot, pump PWM = `pressurePID.calculate(shot.currentGoalPressure, shot.pressure)`
-- Default gains Kp=25, Ki=0.5, Kd=8; live-tunable via web (`/set_pid`)
-- Output floor prevents pump shutoff; anti-windup on integral term
+- Default gains Kp=15, Ki=1, Kd=5; live-tunable via web (`/set_pid`)
+- Pressure is sampled every control iteration (~20 Hz) with EMA smoothing (`PRESSURE_FILTER_ALPHA`) — never only at the scale's ~2 Hz weight rate, which froze the measurement between updates and made the derivative term slam the pump on every jump
+- Derivative acts on the (filtered) measurement, not the error, so profile setpoint steps don't kick the output
+- Output is slew-rate limited (`outputSlewRate`, PWM counts/s); output floor prevents pump shutoff; anti-windup on integral term
 - Idle state: pump at 100 % (PWM 255)
 
 **Pressure Profiles** (shot_stopper.cpp:updateShotTrajectory)
