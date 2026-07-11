@@ -4,7 +4,7 @@
 
 PIDController::PIDController(float kp, float ki, float kd)
   : kp(kp), ki(ki), kd(kd),
-    outputMin(77),   // 30% floor: min power to prevent backflow/pump shutoff
+    outputMin(0),   // 30% floor: min power to prevent backflow/pump shutoff
     outputMax(255),  // Full power maximum
     integralMax(100.0f),
     outputSlewRate(300.0f),
