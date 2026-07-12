@@ -53,6 +53,7 @@ prototypes) in the header, definitions in the source file.
 | `pid_controller.h/.cpp` | ~65/~75 | PID class for pressure control (anti-windup, output floor to prevent pump shutoff) |
 | `shot_history.h/.cpp` | ~45/~70 | RAM-only ring buffer of last 5 shots, downsampled to 100 points each |
 | `pump_dimmer.h/.cpp` | ~45/~130 | AC phase-angle pump dimmer: zero-cross ISR (GPIO 4) + one-shot hw timer fires the triac gate; falls back to on/off if the sync signal disappears |
+| `cleaning_cycle.h/.cpp` | ~90/~250 | Automated detergent backflush: pressure-limited flushes (fill to max bar → hold at dimmed pump → release), soak, user-confirmed rinse phase |
 | `debug.h` | ~70 | Category-based serial debug macros (`DEBUG_SHOT_PRINT`, `DEBUG_SCALE_PRINT`, ...) |
 | `secrets.h` | 1 | WiFi credentials (`ssid`, `password`) — must NOT be committed. Include AFTER the WiFi headers: the macros clobber their parameter names otherwise |
 
@@ -106,6 +107,12 @@ A global `Shot shot` instance is shared across modules.
   - **By time-left**: overrides based on predicted remaining time (default: 4 bar for last 5 s)
 - Set via web as comma lists; negative times encode "time left"
 
+**Cleaning Cycle** (cleaning_cycle.cpp:cleaningUpdate, runs in controlTask)
+- Standard detergent backflush automated (per La Marzocco/Cafiza practice: 5 flushes on/off with detergent, soak, 5 rinse flushes) but the on-phase is **pressure-limited, not timed**: with a blind basket the pump deadheads, so each flush fills until `maxPressureBar` (default 9), holds `holdS` (5 s) with the pump dimmed to `holdPumpLevel` (120), then releases the button so the 3-way valve vents detergent through the valve body
+- `fillTimeoutS` (10 s) fallback if pressure never builds (blind basket forgotten — flagged on the dashboard); hard failsafe releases immediately at `maxPressureBar + 1`
+- Flow: `/start_cleaning` → detergent flushes → `soakS` (60 s) soak → AWAIT_RINSE (user rinses basket, presses "Confirm rinse" → `/continue_cleaning`; 10 min timeout aborts) → rinse flushes → done. `/stop_cleaning` aborts anytime; a **physical button press aborts without re-pulsing** (the user already toggled the machine)
+- Config live-tunable via `/set_cleaning` (RAM only); shot starts blocked while cleaning and vice versa
+
 **Button State Machine** (shot_stopper.cpp:handleButtonLogic)
 - Four states: IDLE → PRESSED → [HELD] → RELEASED
 - Debouncing via 8-sample majority array read every 5 ms
@@ -147,6 +154,7 @@ WiFi connects with a 15 s boot timeout; the firmware runs fine without it. REST 
 - `GET /set_goal_weight?value=` (10–200 g, persisted to EEPROM)
 - `GET /set_weight_offset?value=` (0–5 g, persisted to EEPROM)
 - `GET /set_pressure_profile?times=T1,T2&pressures=P1,P2` — positive T = from start, negative T = time-left override
+- `GET /start_cleaning`, `/continue_cleaning`, `/stop_cleaning` — automated backflush cycle (cleaning_cycle.cpp); `GET /set_cleaning?max_pressure=&cycles=&hold_s=&pause_s=&soak_s=` — cleaning parameters (each optional, range-checked, RAM only)
 - `GET /shots` — history list (newest first), `GET /shot?id=N` — downsampled trajectory
 - `GET /api/system/status`, `/api/shots/latest`, `/api/shots/{id}` — Gaggiuino-compatible API so Beanconqueror imports shots post-brew (add ESP IP as a `GAGGIUINO` preparation device; datapoint values are ints ×10; flow derived from weight, temperature zero-filled; `/api/shots/latest` must stay registered before the `/api/shots/*` wildcard; shot JSON MUST include nested `profile.name` — BQ's import modal silently drops shots without it)
 

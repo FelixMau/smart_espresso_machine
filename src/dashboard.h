@@ -124,6 +124,43 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 </section>
 
 <section>
+  <h2>Cleaning cycle (detergent backflush)</h2>
+  <div class="panel">
+    <div class="row" style="margin-bottom:10px">
+      <button class="primary" id="cleanStartBtn" onclick="fetch('/start_cleaning')"
+              title="Put detergent in the blind basket and lock in the portafilter first">Start cleaning</button>
+      <button id="cleanContinueBtn" onclick="fetch('/continue_cleaning')" disabled
+              title="Confirm after rinsing the blind basket - starts the water flushes">Confirm rinse</button>
+      <button class="danger" onclick="fetch('/stop_cleaning')">Abort</button>
+      <span id="cleanStatus" style="font-size:14px;color:var(--ink2)">Idle. Add detergent to the blind basket, lock in, then start.</span>
+    </div>
+    <div class="row">
+      <div class="field">
+        <label>Max pressure (bar)</label>
+        <input type="number" id="clMaxP" min="4" max="12" step="0.5">
+      </div>
+      <div class="field">
+        <label>Flushes per phase</label>
+        <input type="number" id="clCycles" min="1" max="10" step="1">
+      </div>
+      <div class="field">
+        <label>Hold at max (s)</label>
+        <input type="number" id="clHold" min="0" max="30" step="1">
+      </div>
+      <div class="field">
+        <label>Pause between (s)</label>
+        <input type="number" id="clPause" min="2" max="60" step="1">
+      </div>
+      <div class="field">
+        <label>Soak (s)</label>
+        <input type="number" id="clSoak" min="0" max="600" step="10">
+      </div>
+      <button onclick="setCleaning()">Set</button>
+    </div>
+  </div>
+</section>
+
+<section>
   <h2>PID tuning (live)</h2>
   <div class="panel row">
     <div class="field">
@@ -239,6 +276,31 @@ function pidChanged() {
 }
 
 function setGoalWeight() { fetch('/set_goal_weight?value=' + goalW.value); }
+function setCleaning() {
+  fetch(`/set_cleaning?max_pressure=${clMaxP.value}&cycles=${clCycles.value}` +
+        `&hold_s=${clHold.value}&pause_s=${clPause.value}&soak_s=${clSoak.value}`);
+}
+function cleanStatusText(c) {
+  if (!c.active) {
+    return c.phase === 'done' ? 'Cleaning complete.'
+         : 'Idle. Add detergent to the blind basket, lock in, then start.';
+  }
+  if (c.phase === 'soak') {
+    return `Soaking detergent… ${Math.max(0, c.soakS - c.elapsed).toFixed(0)} s left`;
+  }
+  if (c.phase === 'await_rinse') {
+    return 'Remove portafilter, rinse blind basket and group, lock back in, then press Confirm rinse.';
+  }
+  const ph = c.phase === 'detergent' ? 'Detergent' : 'Rinse';
+  let txt = `${ph} flush ${c.cycle}/${c.cycles}: `;
+  if (c.state === 'pressurize') txt += 'pressurizing…';
+  else if (c.state === 'hold') txt += `holding at ${c.maxPressure.toFixed(1)} bar`;
+  else txt += 'released - venting through valve';
+  if (c.lastFillPeak > 0) {
+    txt += ` (last peak ${c.lastFillPeak.toFixed(1)} bar${c.lastFillReachedMax ? '' : ' ⚠ max never reached - blind basket inserted?'})`;
+  }
+  return txt;
+}
 function setProfile() {
   fetch('/set_pressure_profile?times=' + encodeURIComponent(profTimes.value)
       + '&pressures=' + encodeURIComponent(profPressures.value));
@@ -281,7 +343,11 @@ async function poll() {
     document.getElementById('conn').textContent = 'connected';
     document.getElementById('conn').className = 'ok';
 
-    txt('tState', s.brewing ? 'Brewing' : 'Idle');
+    const c = s.cleaning || {};
+    txt('tState', c.active ? 'Cleaning' : (s.brewing ? 'Brewing' : 'Idle'));
+    cleanStartBtn.disabled = !!c.active || s.brewing;
+    cleanContinueBtn.disabled = c.phase !== 'await_rinse';
+    document.getElementById('cleanStatus').textContent = cleanStatusText(c);
     txt('tScale', s.scaleConnected ? 'Connected' : 'Offline');
     document.getElementById('tScale').className = 'value ' + (s.scaleConnected ? 'ok' : 'bad');
     startBtn.disabled = !s.scaleConnected;  // no shots without a scale
@@ -310,6 +376,8 @@ async function poll() {
       }
       profTimes.value = (s.profileTimes || []).join(',');
       profPressures.value = (s.profilePressures || []).join(',');
+      clMaxP.value = c.maxPressure; clCycles.value = c.cycles;
+      clHold.value = c.holdS; clPause.value = c.pauseS; clSoak.value = c.soakS;
       loadHistory();
     }
 

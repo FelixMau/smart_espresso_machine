@@ -4,6 +4,7 @@
 #include <AcaiaArduinoBLE.h>
 #include <WiFi.h>
 
+#include "cleaning_cycle.h"
 #include "debug.h"
 #include "pid_controller.h"
 #include "pump_dimmer.h"
@@ -243,7 +244,7 @@ void controlIteration() {
 
   if (webStartRequest) {
     webStartRequest = false;
-    if (!shot.brewing) {
+    if (!shot.brewing && !cleaningActive()) {
       DEBUG_SHOT_PRINT("Shot start requested via web - pressing machine button");
       if (MOMENTARY) {
         // Pulse the opto-coupled button to start the machine
@@ -279,13 +280,24 @@ void controlIteration() {
   }
 
   // ========================================================================
+  // CLEANING CYCLE (automated detergent backflush, cleaning_cycle.cpp)
+  // ========================================================================
+  // Runs only when no shot is active; presses the machine button itself and
+  // dictates the pump level below while active.
+
+  cleaningUpdate(shot.pressure);
+
+  // ========================================================================
   // PUMP DIMMER CONTROL (PID during shot, 100% when idle)
   // ========================================================================
 
   long encoderPosition = encoder.getCount();
 
   int pwmValue = 255;
-  if (!shot.brewing) {
+  if (cleaningActive()) {
+    // Full power while pressurizing, dimmed while holding at max pressure
+    pwmValue = cleaningPumpLevel();
+  } else if (!shot.brewing) {
     // IDLE STATE: Pump at full speed (100% = 255)
     pwmValue = 255;
   } else if (shot.datapoints == 0) {

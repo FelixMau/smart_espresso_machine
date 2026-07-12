@@ -10,6 +10,7 @@
 // secrets.h defines 'ssid' and 'password' as macros; it must come after the
 // WiFi headers or it clobbers their parameter names
 #include <secrets.h>
+#include "cleaning_cycle.h"
 #include "dashboard.h"
 #include "debug.h"
 #include "shot_history.h"
@@ -80,6 +81,21 @@ void initializeServer(PIDController* pid) {
     doc["goalPressure"] = shot.currentGoalPressure;
     doc["pumpPwm"] = shot.pumpPwm;
 
+    // Cleaning cycle status + live config (for the dashboard editors)
+    JsonObject cl = doc["cleaning"].to<JsonObject>();
+    cl["active"] = cleaningActive();
+    cl["phase"] = cleaningPhaseName();
+    cl["state"] = cleaningStateName();
+    cl["cycle"] = cleaningCurrentCycle();
+    cl["cycles"] = cleaningConfig.cyclesPerPhase;
+    cl["elapsed"] = cleaningStateElapsedS();
+    cl["lastFillPeak"] = cleaningLastFillPeakBar();
+    cl["lastFillReachedMax"] = cleaningLastFillReachedMax();
+    cl["maxPressure"] = cleaningConfig.maxPressureBar;
+    cl["holdS"] = cleaningConfig.holdS;
+    cl["pauseS"] = cleaningConfig.pauseS;
+    cl["soakS"] = cleaningConfig.soakS;
+
     JsonObject pid = doc["pid"].to<JsonObject>();
     if (webPid) {
       pid["kp"] = webPid->kp;
@@ -121,6 +137,49 @@ void initializeServer(PIDController* pid) {
   // Reset: end the shot on ESP + scale only, machine button untouched
   server.on("/reset_shot", HTTP_GET, [](AsyncWebServerRequest* req) {
     webResetRequest = true;
+    req->send(200, "text/plain", "OK");
+  });
+
+  // Cleaning cycle (automated detergent backflush): request flags only,
+  // executed by the control task via cleaningUpdate()
+  server.on("/start_cleaning", HTTP_GET, [](AsyncWebServerRequest* req) {
+    cleaningStartRequest = true;
+    req->send(200, "text/plain", "OK");
+  });
+  server.on("/continue_cleaning", HTTP_GET, [](AsyncWebServerRequest* req) {
+    cleaningContinueRequest = true;
+    req->send(200, "text/plain", "OK");
+  });
+  server.on("/stop_cleaning", HTTP_GET, [](AsyncWebServerRequest* req) {
+    cleaningStopRequest = true;
+    req->send(200, "text/plain", "OK");
+  });
+
+  // Cleaning parameters; each is optional and range-checked (RAM only)
+  server.on("/set_cleaning", HTTP_GET, [](AsyncWebServerRequest* req) {
+    if (req->hasParam("max_pressure")) {
+      float v = req->getParam("max_pressure")->value().toFloat();
+      if (v >= 4 && v <= 12) cleaningConfig.maxPressureBar = v;
+    }
+    if (req->hasParam("cycles")) {
+      int v = req->getParam("cycles")->value().toInt();
+      if (v >= 1 && v <= 10) cleaningConfig.cyclesPerPhase = v;
+    }
+    if (req->hasParam("hold_s")) {
+      float v = req->getParam("hold_s")->value().toFloat();
+      if (v >= 0 && v <= 30) cleaningConfig.holdS = v;
+    }
+    if (req->hasParam("pause_s")) {
+      float v = req->getParam("pause_s")->value().toFloat();
+      if (v >= 2 && v <= 60) cleaningConfig.pauseS = v;
+    }
+    if (req->hasParam("soak_s")) {
+      float v = req->getParam("soak_s")->value().toFloat();
+      if (v >= 0 && v <= 600) cleaningConfig.soakS = v;
+    }
+    DEBUG_CLEANING_PRINT("Cleaning config set via web: max %.1f bar, %d cycles, hold %.0f s, pause %.0f s, soak %.0f s",
+                         cleaningConfig.maxPressureBar, cleaningConfig.cyclesPerPhase,
+                         cleaningConfig.holdS, cleaningConfig.pauseS, cleaningConfig.soakS);
     req->send(200, "text/plain", "OK");
   });
 

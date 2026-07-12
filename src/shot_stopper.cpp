@@ -2,6 +2,7 @@
 
 #include <EEPROM.h>
 
+#include "cleaning_cycle.h"
 #include "debug.h"
 #include "shot_history.h"
 
@@ -305,8 +306,14 @@ void handleButtonLogic() {
         DEBUG_BUTTON_PRINT("Button pressed");
         buttonState = PRESSED;
         if (!MOMENTARY) {
-          shot.brewing = true;
-          setBrewingState(shot.brewing);
+          if (cleaningActive()) {
+            // The user toggled the machine themselves - abort cleaning, do
+            // not start a shot on top of it
+            cleaningAbortFromButton();
+          } else {
+            shot.brewing = true;
+            setBrewingState(shot.brewing);
+          }
         }
       }
       break;
@@ -315,6 +322,12 @@ void handleButtonLogic() {
       if (!newButtonState) {
         DEBUG_BUTTON_PRINT("Button released");
         buttonState = RELEASED;
+        if (MOMENTARY && cleaningActive()) {
+          // Physical press during cleaning = abort; machine state already
+          // changed by the user's press, so only our tracking is released
+          cleaningAbortFromButton();
+          break;
+        }
         shot.brewing = !shot.brewing;
         if (!shot.brewing) {
           shot.end = EndType::BUTTON;

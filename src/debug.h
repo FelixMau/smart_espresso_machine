@@ -17,6 +17,7 @@
 #define DEBUG_ENCODER true
 #define DEBUG_SCALE true
 #define DEBUG_PUMP true
+#define DEBUG_CLEANING true
 #define DEBUG_STARTUP true
 #define DEBUG_STATE false  // Verbose state machine logging
 
@@ -65,6 +66,7 @@
 #define DEBUG_ENCODER_PRINT(fmt, ...) DEBUG_PRINT("[ENCODER]", DEBUG_ENCODER, fmt, ##__VA_ARGS__)
 #define DEBUG_SCALE_PRINT(fmt, ...) DEBUG_PRINT("[SCALE]", DEBUG_SCALE, fmt, ##__VA_ARGS__)
 #define DEBUG_PUMP_PRINT(fmt, ...) DEBUG_PRINT("[PUMP]", DEBUG_PUMP, fmt, ##__VA_ARGS__)
+#define DEBUG_CLEANING_PRINT(fmt, ...) DEBUG_PRINT("[CLEAN]", DEBUG_CLEANING, fmt, ##__VA_ARGS__)
 #define DEBUG_STARTUP_PRINT(fmt, ...) DEBUG_PRINT("[STARTUP]", DEBUG_STARTUP, fmt, ##__VA_ARGS__)
 #define DEBUG_STATE_PRINT(fmt, ...) DEBUG_PRINT("[STATE]", DEBUG_STATE, fmt, ##__VA_ARGS__)
 
