@@ -21,9 +21,8 @@
 #define BUTTON_READ_PERIOD_MS 5
 #define DRIP_DELAY_S 3         // Wait after shot end before measuring final weight
 
-#define EEPROM_SIZE 2  // Two 1-byte slots
-#define WEIGHT_ADDR 0  // EEPROM byte 0: goal weight (g)
-#define OFFSET_ADDR 1  // EEPROM byte 1: weight offset x 10
+// EEPROM persistence (goal weight, offset, profile, cleaning, WiFi) lives in
+// settings.h/.cpp; the old two-byte layout is migrated there on first boot.
 
 #define TREND_LINE_DATAPOINTS 10  // Regression window (accuracy vs latency)
 #define MAX_SHOT_DATAPOINTS 1000  // Capacity of the per-shot trajectory arrays

@@ -44,7 +44,8 @@
 enum class CleaningPhase { NONE, DETERGENT, SOAK, AWAIT_RINSE, RINSE, DONE };
 enum class CleaningState { OFF, PRESSURIZE, HOLD, RELEASE };
 
-// Live-tunable via /set_cleaning (RAM only, defaults restored on boot)
+// Live-tunable via /set_cleaning; persisted across reboots in the EEPROM
+// settings blob (settings.h)
 struct CleaningConfig {
   float maxPressureBar;   // End the fill when this pressure is reached
   float fillTimeoutS;     // Fallback fill duration if pressure never builds

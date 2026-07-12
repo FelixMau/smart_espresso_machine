@@ -23,6 +23,7 @@ extern bool serverStarted;  // Lets loop() start the server if WiFi comes up lat
 extern volatile bool webStartRequest;
 extern volatile bool webStopRequest;
 extern volatile bool webResetRequest;  // Stop ESP/scale shot without pressing the machine button
+extern volatile bool webRebootRequest; // Consumed by loop(); refused while brewing/cleaning
 
 // Connect to WiFi with a timeout so a missing network can't hang boot forever.
 // Returns true if connected; the web server is only started when it is.

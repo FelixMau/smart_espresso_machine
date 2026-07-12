@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <EEPROM.h>
 #include <ESP32Encoder.h>
 #include <AcaiaArduinoBLE.h>
 #include <WiFi.h>
@@ -9,6 +8,7 @@
 #include "pid_controller.h"
 #include "pump_dimmer.h"
 #include "pump_model.h"
+#include "settings.h"
 #include "shot_history.h"
 #include "shot_stopper.h"
 #include "webserver.h"
@@ -88,23 +88,10 @@ void setup() {
   DEBUG_STARTUP_PRINT("Smart Espresso Machine Starting");
   DEBUG_STARTUP_PRINT("========================================");
 
-  // Retrieve stored goal weight and offset from EEPROM
-  EEPROM.begin(EEPROM_SIZE);
-  shot.goalWeight = EEPROM.read(WEIGHT_ADDR);
-  shot.weightOffset = EEPROM.read(OFFSET_ADDR) / 10.0f;
-
-  DEBUG_STARTUP_PRINT("Goal Weight retrieved: %.0f g", shot.goalWeight);
-  DEBUG_STARTUP_PRINT("Offset retrieved: %.1f g", shot.weightOffset);
-
-  // Validate EEPROM values; use defaults if unreasonable
-  if ((shot.goalWeight < 10) || (shot.goalWeight > 200)) {
-    shot.goalWeight = 36;
-    DEBUG_STARTUP_PRINT("Goal Weight out of range, set to default: 36 g");
-  }
-  if (shot.weightOffset > MAX_OFFSET) {
-    shot.weightOffset = 1.5f;
-    DEBUG_STARTUP_PRINT("Offset out of range, set to default: 1.5 g");
-  }
+  // Load persisted settings (goal weight, offset, pressure profile, cleaning
+  // config, WiFi credentials) from EEPROM and apply them to the live state.
+  // Must run before the tasks start and before initializeWiFi().
+  settingsLoad();
 
   // GPIO pin initialization
   pinMode(LED_BUILTIN, OUTPUT);
@@ -481,6 +468,13 @@ void scaleTask(void* param) {
 
 void loop() {
   static unsigned long lastWifiRetryMs = 0;
+  if (webRebootRequest) {
+    // Requested via /reboot (e.g. to apply new WiFi credentials); the handler
+    // already refused it while brewing/cleaning. Short delay so the HTTP
+    // response gets flushed before the restart.
+    vTaskDelay(pdMS_TO_TICKS(500));
+    ESP.restart();
+  }
   if (WiFi.status() != WL_CONNECTED) {
     if (millis() - lastWifiRetryMs > 15000) {
       lastWifiRetryMs = millis();

@@ -1,9 +1,8 @@
 #include "shot_stopper.h"
 
-#include <EEPROM.h>
-
 #include "cleaning_cycle.h"
 #include "debug.h"
+#include "settings.h"
 #include "shot_history.h"
 
 // ============================================================================
@@ -265,8 +264,7 @@ void detectShotError(Shot* s, float weight) {
         weight, s->goalWeight, s->weightOffset, newOffset);
       s->weightOffset = newOffset;
 
-      EEPROM.write(OFFSET_ADDR, (uint8_t)(s->weightOffset * 10)); // 1 byte, 0-255
-      EEPROM.commit();
+      settingsSave();
       DEBUG_SHOT_PRINT("New offset saved to EEPROM");
     }
   }

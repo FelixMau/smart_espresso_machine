@@ -31,7 +31,7 @@ platformio test
 - **PID-controlled pump dimmer** (zero-cross-synced phase-angle triac control) following configurable pressure profiles
 - **Rotary encoder** for manual pump power adjustment
 - **Async web dashboard** for live monitoring, control, and PID tuning over LAN
-- **EEPROM storage** for goal weight and learned calibration offsets
+- **EEPROM storage** for goal weight, learned calibration offsets, pressure profile, cleaning config and WiFi credentials (settings.h/.cpp)
 
 Design philosophy (vs. e.g. Gaggiuino): **extend** the machine's original controls instead of replacing them — no high-voltage control logic replacement, machine stays restorable to stock.
 
@@ -54,6 +54,7 @@ prototypes) in the header, definitions in the source file.
 | `shot_history.h/.cpp` | ~45/~70 | RAM-only ring buffer of last 5 shots, downsampled to 100 points each |
 | `pump_dimmer.h/.cpp` | ~55/~160 | Zero-cross synced pump dimmer (GPIO 4 ISR): PSM whole-cycle firing with click counting (`PUMP_PSM_MODE`, default) or phase-angle via one-shot hw timer; falls back to on/off if the sync signal disappears |
 | `pump_model.h/.cpp` | ~45/~85 | Vibratory pump model + gaggiuino-style feedforward pressure control (flow per click as f(pressure), `getPumpPct` control law) |
+| `settings.h/.cpp` | ~65/~160 | Versioned EEPROM settings blob: goal weight, offset, pressure profile, cleaning config, WiFi credentials; legacy two-byte migration |
 | `cleaning_cycle.h/.cpp` | ~90/~250 | Automated detergent backflush: pressure-limited flushes (fill to max bar → hold at dimmed pump → release), soak, user-confirmed rinse phase |
 | `debug.h` | ~70 | Category-based serial debug macros (`DEBUG_SHOT_PRINT`, `DEBUG_SCALE_PRINT`, ...) |
 | `secrets.h` | 1 | WiFi credentials (`ssid`, `password`) — must NOT be committed. Include AFTER the WiFi headers: the macros clobber their parameter names otherwise |
@@ -152,12 +153,13 @@ WiFi connects with a 15 s boot timeout; the firmware runs fine without it. REST 
 - `GET /set_pid?kp=&ki=&kd=` — live PID tuning (each gain optional)
 - `GET /set_goal_weight?value=` (10–200 g, persisted to EEPROM)
 - `GET /set_weight_offset?value=` (0–5 g, persisted to EEPROM)
-- `GET /set_pressure_profile?times=T1,T2&pressures=P1,P2` — positive T = from start, negative T = time-left override
-- `GET /start_cleaning`, `/continue_cleaning`, `/stop_cleaning` — automated backflush cycle (cleaning_cycle.cpp); `GET /set_cleaning?max_pressure=&cycles=&hold_s=&pause_s=&soak_s=` — cleaning parameters (each optional, range-checked, RAM only)
+- `GET /set_pressure_profile?times=T1,T2&pressures=P1,P2` — positive T = from start, negative T = time-left override (persisted to EEPROM)
+- `GET /start_cleaning`, `/continue_cleaning`, `/stop_cleaning` — automated backflush cycle (cleaning_cycle.cpp); `GET /set_cleaning?max_pressure=&cycles=&hold_s=&pause_s=&soak_s=` — cleaning parameters (each optional, range-checked, persisted to EEPROM)
+- `GET /set_wifi?ssid=&pass=` — store WiFi credentials to EEPROM, used on next boot (boot falls back to the compile-time secrets.h credentials if the stored ones fail; empty ssid reverts to secrets.h); `GET /reboot` — restart via loop() so the response flushes first, refused (409) while brewing/cleaning
 - `GET /shots` — history list (newest first), `GET /shot?id=N` — downsampled trajectory
 - `GET /api/system/status`, `/api/shots/latest`, `/api/shots/{id}` — Gaggiuino-compatible API so Beanconqueror imports shots post-brew (add ESP IP as a `GAGGIUINO` preparation device; datapoint values are ints ×10; flow derived from weight, temperature zero-filled; `/api/shots/latest` must stay registered before the `/api/shots/*` wildcard; shot JSON MUST include nested `profile.name` — BQ's import modal silently drops shots without it)
 
-Dashboard features: live tiles, start/stop/reset, PID sliders, goal weight/offset editors, pressure profile editor, live Chart.js plots, shot history comparison. Chart.js loads from CDN, so the *client browser* needs internet; the ESP does not.
+Dashboard features: live tiles, start/stop/reset, PID sliders, goal weight/offset editors, pressure profile editor, WiFi credential editor + reboot button, live Chart.js plots, shot history comparison. Chart.js loads from CDN, so the *client browser* needs internet; the ESP does not.
 
 ## Configuration and Customization
 
@@ -184,10 +186,9 @@ build_flags = -std=c++17
 
 Debug output is controlled per category in debug.h (`DEBUG_ENABLED`, `DEBUG_SHOT`, `DEBUG_SCALE`, ...).
 
-### EEPROM Storage
+### EEPROM Storage (settings.h/.cpp)
 
-- **Address 0** (`WEIGHT_ADDR`): Goal weight (uint8_t; validated to 10–200 g on boot, default 36 g)
-- **Address 1** (`OFFSET_ADDR`): Weight offset × 10 (0–25.5 g; validated ≤ MAX_OFFSET, default 1.5 g)
+All persistence goes through one versioned `PersistentSettings` blob (magic `"ESPR"` + version, `EEPROM.put` at address 4, 512-byte EEPROM region) holding goal weight, weight offset, the pressure profile, the full `CleaningConfig`, and optional WiFi credentials. `settingsLoad()` (called first thing in `setup()`, before tasks and WiFi) validates/sanitizes the blob and applies it to `shot`/`cleaningConfig`; `settingsSave()` snapshots the live state back and commits (mutex-serialized — it's called from both controlTask offset learning and the AsyncTCP `/set_*` handlers). The pre-blob two-byte layout (goal weight at byte 0, offset ×10 at byte 1) is migrated automatically on first boot; a magic/version mismatch falls back to legacy bytes + compiled-in defaults. Bump `SETTINGS_VERSION` on any struct layout change.
 
 ### WiFi Credentials
 
@@ -196,7 +197,7 @@ Debug output is controlled per category in debug.h (`DEBUG_ENABLED`, `DEBUG_SHOT
 #define ssid "your_ssid"
 #define password "your_password"
 ```
-This file contains real credentials — keep it out of version control (.gitignore) and share a `secrets.h.example` instead.
+This file contains real credentials — keep it out of version control (.gitignore) and share a `secrets.h.example` instead. These compile-time credentials are the first-boot default and the fallback: credentials stored via `/set_wifi` win at boot, but if they fail to connect within the timeout the firmware retries with the secrets.h ones, so a typo'd password can't lock the dashboard out. Since `ssid`/`password` are macros, no other header may use those tokens as parameter names (settings.h uses `newSsid`/`newPass` for exactly this reason).
 
 ## BLE Scale Integration (Acaia Lunar)
 

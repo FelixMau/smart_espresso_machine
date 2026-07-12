@@ -194,6 +194,23 @@ const char DASHBOARD_HTML[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 </section>
 
 <section>
+  <h2>System (WiFi stored to EEPROM, used on next boot)</h2>
+  <div class="panel row">
+    <div class="field">
+      <label>WiFi SSID (stored: <span id="wifiCur">–</span>)</label>
+      <input type="text" class="wide" id="wifiSsid" placeholder="empty = compiled-in">
+    </div>
+    <div class="field">
+      <label>WiFi password</label>
+      <input type="password" class="wide" id="wifiPass">
+    </div>
+    <button onclick="setWifi()">Save WiFi</button>
+    <button class="danger" onclick="doReboot()"
+            title="Applies stored WiFi credentials; refused while brewing or cleaning">Reboot ESP</button>
+  </div>
+</section>
+
+<section>
   <h2>Live shot</h2>
   <div class="panel">
     <div class="chartbox"><canvas id="weightChart"></canvas></div>
@@ -305,6 +322,16 @@ function setProfile() {
   fetch('/set_pressure_profile?times=' + encodeURIComponent(profTimes.value)
       + '&pressures=' + encodeURIComponent(profPressures.value));
 }
+async function setWifi() {
+  const res = await fetch('/set_wifi?ssid=' + encodeURIComponent(wifiSsid.value)
+                        + '&pass=' + encodeURIComponent(wifiPass.value));
+  alert(await res.text());
+  wifiPass.value = '';
+}
+async function doReboot() {
+  if (!confirm('Reboot the ESP32?')) return;
+  alert(await (await fetch('/reboot')).text());
+}
 
 // --- Shot history ----------------------------------------------------------
 async function loadHistory() {
@@ -378,6 +405,8 @@ async function poll() {
       profPressures.value = (s.profilePressures || []).join(',');
       clMaxP.value = c.maxPressure; clCycles.value = c.cycles;
       clHold.value = c.holdS; clPause.value = c.pauseS; clSoak.value = c.soakS;
+      wifiCur.textContent = s.wifiSsid || '(compiled-in)';
+      wifiSsid.value = s.wifiSsid || '';
       loadHistory();
     }
 

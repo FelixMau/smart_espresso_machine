@@ -1,7 +1,6 @@
 #include "webserver.h"
 
 #include <ArduinoJson.h>
-#include <EEPROM.h>
 
 #include "WiFi.h"
 #include "AsyncTCP.h"
@@ -13,6 +12,7 @@
 #include "cleaning_cycle.h"
 #include "dashboard.h"
 #include "debug.h"
+#include "settings.h"
 #include "shot_history.h"
 #include "shot_stopper.h"
 
@@ -24,24 +24,39 @@ bool serverStarted = false;
 volatile bool webStartRequest = false;
 volatile bool webStopRequest = false;
 volatile bool webResetRequest = false;
+volatile bool webRebootRequest = false;
 
 static AsyncWebServer server(80);
 
 // PID controller to monitor/tune, set by initializeServer()
 static PIDController* webPid = nullptr;
 
-bool initializeWiFi() {
-  WiFi.mode(WIFI_STA);
-  WiFi.setAutoReconnect(true);
-  WiFi.begin(ssid, password);
-  DEBUG_STARTUP_PRINT("Connecting to WiFi '%s'...", ssid);
+// Try one set of credentials with a bounded wait; returns the WiFi status
+static bool tryWifi(const char* trySsid, const char* tryPass) {
+  WiFi.begin(trySsid, tryPass);
+  DEBUG_STARTUP_PRINT("Connecting to WiFi '%s'...", trySsid);
 
   unsigned long start = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_CONNECT_TIMEOUT_MS) {
     delay(250);
   }
+  return WiFi.status() == WL_CONNECTED;
+}
 
-  wifiConnected = (WiFi.status() == WL_CONNECTED);
+bool initializeWiFi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.setAutoReconnect(true);
+
+  // Credentials stored via /set_wifi win; fall back to the compile-time
+  // secrets.h ones if none are stored OR the stored ones fail to connect,
+  // so a typo'd password can't brick the dashboard permanently
+  bool storedCreds = settings.wifiSsid[0] != '\0';
+  wifiConnected = tryWifi(storedCreds ? settings.wifiSsid : ssid,
+                          storedCreds ? settings.wifiPassword : password);
+  if (!wifiConnected && storedCreds && strcmp(settings.wifiSsid, ssid) != 0) {
+    DEBUG_STARTUP_PRINT("Stored WiFi credentials failed - trying compile-time secrets.h");
+    wifiConnected = tryWifi(ssid, password);
+  }
   if (wifiConnected) {
     DEBUG_STARTUP_PRINT("WiFi connected, IP: %s", WiFi.localIP().toString().c_str());
     // SNTP for real shot timestamps in the Beanconqueror export; syncs in the
@@ -81,6 +96,8 @@ void initializeServer(PIDController* pid) {
     doc["goalPressure"] = shot.currentGoalPressure;
     doc["pumpPwm"] = shot.pumpPwm;
     doc["pumpFlow"] = shot.pumpFlow;
+    // SSID only, never the password; empty = compile-time secrets.h in use
+    doc["wifiSsid"] = settings.wifiSsid;
 
     // Cleaning cycle status + live config (for the dashboard editors)
     JsonObject cl = doc["cleaning"].to<JsonObject>();
@@ -156,7 +173,8 @@ void initializeServer(PIDController* pid) {
     req->send(200, "text/plain", "OK");
   });
 
-  // Cleaning parameters; each is optional and range-checked (RAM only)
+  // Cleaning parameters; each is optional and range-checked, persisted to
+  // EEPROM via the settings blob
   server.on("/set_cleaning", HTTP_GET, [](AsyncWebServerRequest* req) {
     if (req->hasParam("max_pressure")) {
       float v = req->getParam("max_pressure")->value().toFloat();
@@ -181,6 +199,7 @@ void initializeServer(PIDController* pid) {
     DEBUG_CLEANING_PRINT("Cleaning config set via web: max %.1f bar, %d cycles, hold %.0f s, pause %.0f s, soak %.0f s",
                          cleaningConfig.maxPressureBar, cleaningConfig.cyclesPerPhase,
                          cleaningConfig.holdS, cleaningConfig.pauseS, cleaningConfig.soakS);
+    settingsSave();
     req->send(200, "text/plain", "OK");
   });
 
@@ -201,8 +220,7 @@ void initializeServer(PIDController* pid) {
       float goalWeight = req->getParam("value")->value().toFloat();
       if (goalWeight >= 10 && goalWeight <= 200) {
         shot.goalWeight = goalWeight;
-        EEPROM.write(WEIGHT_ADDR, (uint8_t)goalWeight);
-        EEPROM.commit();
+        settingsSave();
       }
     }
     req->send(200, "text/plain", "OK");
@@ -213,8 +231,7 @@ void initializeServer(PIDController* pid) {
       float offset = req->getParam("value")->value().toFloat();
       if (offset >= 0 && offset <= MAX_OFFSET) {
         shot.weightOffset = offset;
-        EEPROM.write(OFFSET_ADDR, (uint8_t)(offset * 10));
-        EEPROM.commit();
+        settingsSave();
       }
     }
     req->send(200, "text/plain", "OK");
@@ -264,8 +281,40 @@ void initializeServer(PIDController* pid) {
       shot.numPressureGoalsByTimeLeft = numByTimeLeft;
       DEBUG_SHOT_PRINT("Pressure profile set via web: %d by-time, %d by-time-left goals",
                        numByTime, numByTimeLeft);
+      settingsSave();
     }
     req->send(200, "text/plain", "OK");
+  });
+
+  // WiFi credentials: stored to EEPROM, used on next boot (boot falls back
+  // to the compile-time secrets.h credentials if the stored ones fail, so a
+  // typo can't lock the dashboard out). Empty ssid reverts to secrets.h.
+  server.on("/set_wifi", HTTP_GET, [](AsyncWebServerRequest* req) {
+    if (!req->hasParam("ssid")) {
+      req->send(400, "text/plain", "missing ssid");
+      return;
+    }
+    String newSsid = req->getParam("ssid")->value();
+    String newPass = req->hasParam("pass") ? req->getParam("pass")->value() : "";
+    if (newSsid.length() > 32 || newPass.length() > 64) {
+      req->send(400, "text/plain", "ssid max 32 chars, password max 64");
+      return;
+    }
+    settingsSetWifi(newSsid.c_str(), newPass.c_str());
+    req->send(200, "text/plain",
+              newSsid.length() ? "OK - stored, takes effect on next boot (use /reboot)"
+                               : "OK - reverted to compile-time credentials on next boot");
+  });
+
+  // Reboot (e.g. to apply new WiFi credentials); executed by loop() so the
+  // response gets out first. Refused while the machine is doing anything.
+  server.on("/reboot", HTTP_GET, [](AsyncWebServerRequest* req) {
+    if (shot.brewing || cleaningActive()) {
+      req->send(409, "text/plain", "busy: shot or cleaning in progress");
+      return;
+    }
+    webRebootRequest = true;
+    req->send(200, "text/plain", "OK - rebooting");
   });
 
   // Shot history list with per-shot key findings (newest first)
