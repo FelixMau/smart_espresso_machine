@@ -14,7 +14,7 @@ platformio run -e upesy_wroom
 # Upload to device
 platformio run -e upesy_wroom --target upload
 
-# Monitor serial output (9600 baud)
+# Monitor serial output (115200 baud; DEBUG_ENABLED in debug.h is off by default - serial prints throttle the 100 Hz control loop)
 platformio device monitor
 
 # Run tests
@@ -52,14 +52,15 @@ prototypes) in the header, definitions in the source file.
 | `dashboard.h` | ~340 | Embedded single-page dashboard (PROGMEM HTML, Chart.js from CDN, polls `/state` every 500 ms) |
 | `pid_controller.h/.cpp` | ~65/~75 | PID class for pressure control (anti-windup, output floor to prevent pump shutoff) |
 | `shot_history.h/.cpp` | ~45/~70 | RAM-only ring buffer of last 5 shots, downsampled to 100 points each |
-| `pump_dimmer.h/.cpp` | ~45/~130 | AC phase-angle pump dimmer: zero-cross ISR (GPIO 4) + one-shot hw timer fires the triac gate; falls back to on/off if the sync signal disappears |
+| `pump_dimmer.h/.cpp` | ~55/~160 | Zero-cross synced pump dimmer (GPIO 4 ISR): PSM whole-cycle firing with click counting (`PUMP_PSM_MODE`, default) or phase-angle via one-shot hw timer; falls back to on/off if the sync signal disappears |
+| `pump_model.h/.cpp` | ~45/~85 | Vibratory pump model + gaggiuino-style feedforward pressure control (flow per click as f(pressure), `getPumpPct` control law) |
 | `cleaning_cycle.h/.cpp` | ~90/~250 | Automated detergent backflush: pressure-limited flushes (fill to max bar → hold at dimmed pump → release), soak, user-confirmed rinse phase |
 | `debug.h` | ~70 | Category-based serial debug macros (`DEBUG_SHOT_PRINT`, `DEBUG_SCALE_PRINT`, ...) |
 | `secrets.h` | 1 | WiFi credentials (`ssid`, `password`) — must NOT be committed. Include AFTER the WiFi headers: the macros clobber their parameter names otherwise |
 
 ### FreeRTOS Task Structure (main.cpp)
 
-- **controlTask** (core 1, priority 2, ~50 ms cadence): scale-data consumption, shot trajectory updates, PID pump control, button state machine, shot end detection, EEPROM learning. Never blocks on BLE or HTTP.
+- **controlTask** (core 1, priority 2, ~10 ms cadence / 100 Hz): scale-data consumption, shot trajectory updates, pump pressure control, button state machine, shot end detection, EEPROM learning. Never blocks on BLE or HTTP.
 - **scaleTask** (core 1, priority 1, ~20 ms cadence): owns ALL BLE/scale calls (init with 10 s scan, heartbeat, weight polling, tare/timer commands). 5 s backoff between failed connect attempts because BLE scanning and WiFi share the 2.4 GHz radio.
 - **loop()** (default loopTask): WiFi watchdog only — reconnects every 15 s and starts the web server late if WiFi came up after boot.
 - **AsyncTCP task** (core 0): HTTP handlers. They only set `volatile` request flags (`webStartRequest` etc.) consumed by controlTask — handlers never touch scale/BLE/GPIO directly.
@@ -87,18 +88,16 @@ A global `Shot shot` instance is shared across modules.
 - Only calculates after 10+ measurements and weight > 10 g to avoid erratic predictions
 - Enables stopping shots before over-extraction
 
-**PID Pressure Control** (pid_controller.cpp + main.cpp:controlIteration)
-- During a shot, pump power = `pressurePID.calculate(shot.currentGoalPressure, shot.pressure)` (0–255, applied as a phase-angle firing delay by pump_dimmer.cpp)
-- Default gains Kp=15, Ki=1, Kd=5; live-tunable via web (`/set_pid`)
-- Pressure is sampled every control iteration (~20 Hz) with EMA smoothing (`PRESSURE_FILTER_ALPHA`) — never only at the scale's ~2 Hz weight rate, which froze the measurement between updates and made the derivative term slam the pump on every jump
-- Derivative acts on the (filtered) measurement, not the error, so profile setpoint steps don't kick the output
-- Output is slew-rate limited (`outputSlewRate`, PWM counts/s); output floor prevents pump shutoff; anti-windup on integral term
+**Pressure Control** (main.cpp:controlIteration, `GAGGIUINO_PUMP_CONTROL` selects the law)
+- Default (gaggiuino-style feedforward, pump_model.cpp): output = click rate that sustains the current model-estimated flow at the current pressure + small proportional trim (`getPumpPct`, ported from gaggiuino's pump.cpp). No integral (no windup/limit cycling); overpressure cuts the pump instead of unwinding; errors > 2 bar approach on a bounded ramp. Pump flow is estimated from the PSM click counter × `getPumpFlowPerClick(pressure)` (ULKA/CEME curve; `FLOW_PER_CLICK_AT_ZERO_BAR` = 0.27 ml is the tunable), EMA-smoothed, published as `shot.pumpFlow` (`/state` `pumpFlow`)
+- Fallback (`GAGGIUINO_PUMP_CONTROL false`): PID (pid_controller.cpp), Kp=15/Ki=1/Kd=5, live-tunable via `/set_pid`, derivative-on-measurement, slew-limited output, output floor
+- Pressure is sampled every control iteration (~100 Hz) with EMA smoothing (`PRESSURE_FILTER_ALPHA`) — never only at the scale's ~2 Hz weight rate, which froze the measurement between updates and made the old PID derivative slam the pump on every jump; dP/dt (`pressureChangeSpeed`) and the click-rate flow estimate are computed over 100 ms windows (`DERIVED_STATE_PERIOD_MS`)
 - Idle state: pump at 100 % (level 255)
 
-**Phase-Angle Pump Dimming** (pump_dimmer.cpp)
-- Zero-cross detector on GPIO 4 (rising edge, 100/s at 50 Hz); triac gate on `DIMMER_PIN` (GPIO 5)
-- ZC ISR drops the gate and arms a one-shot hardware timer (timer 0, 1 µs ticks) with `delay = (255 − level)/255 × 10 ms`; the timer ISR raises the gate, which stays high until the next zero cross so the inductive pump load can't drop the triac out
-- 4 ms glitch filter on ZC edges; firing window clamped to [200 µs, 9.5 ms]; levels ≥ 250 hold the gate high, ≤ 2 never fire
+**Pump Dimming** (pump_dimmer.cpp, `PUMP_PSM_MODE` selects the firing scheme)
+- Zero-cross detector on GPIO 4 (rising edge, 100/s at 50 Hz); triac gate on `DIMMER_PIN` (GPIO 5); 4 ms glitch filter on ZC edges
+- PSM (default, for the vibratory pump): Bresenham accumulator decides once per full mains cycle (every 2nd ZC) whether to conduct it whole (gate HIGH both half-cycles = one pump stroke, counted in `pumpDimmerClickCount()`) or skip it; power = fraction of cycles fired, evenly spread. One stroke per cycle because the pump rectifies half-wave internally
+- Phase-angle (`PUMP_PSM_MODE false`, for rotary pumps): ZC ISR drops the gate and arms a one-shot hw timer (timer 0, 1 µs ticks) with `delay = (255 − level)/255 × 10 ms`; firing window clamped to [200 µs, 9.5 ms]; levels ≥ 250 hold the gate high, ≤ 2 never fire
 - Fallback: no zero crossings for 100 ms → plain on/off gate drive (pump survives a lost sync signal mid-shot); transitions logged via `DEBUG_PUMP_PRINT`
 
 **Pressure Profiles** (shot_stopper.cpp:updateShotTrajectory)
@@ -215,7 +214,7 @@ Other tasks never call the scale directly — they set `scaleTareRequest` / `sca
 
 ## Testing and Debugging
 
-### Serial Output (9600 baud)
+### Serial Output (115200 baud, requires DEBUG_ENABLED true in debug.h - keep off for real brewing: blocked serial writes throttle the control loop)
 - Startup sequence, dashboard URL (re-printed every 10 s)
 - Encoder position and PWM values, PID terms
 - Button press/release transitions

@@ -61,10 +61,10 @@
 
 #define PRESSURE_PIN 32  // Analog pin for pressure sensor (MPX5500 or similar)
 
-// EMA smoothing factor for the pressure reading, sampled at the ~50 ms
-// control cadence (time constant ~0.2 s). Raw single ADC reads are noisy
-// and would feed straight into the PID derivative term.
-#define PRESSURE_FILTER_ALPHA 0.2f
+// EMA smoothing factor for the pressure reading, sampled at the ~10 ms
+// control cadence (time constant ~0.1 s). Raw single ADC reads are noisy
+// and would jitter the control law and its dP/dt term.
+#define PRESSURE_FILTER_ALPHA 0.1f
 
 // Active button input: reed switch or brew button, depending on REEDSWITCH
 extern const int BUTTON_INPUT_PIN;
@@ -117,6 +117,7 @@ struct Shot {
   // Published for web dashboard monitoring
   int pumpPwm;         // Last PWM value written to the dimmer (0-255)
   float peakPressure;  // Highest pressure seen during the current shot
+  float pumpFlow;      // Model-estimated pump flow (ml/s, pump_model.cpp)
 };
 
 // ============================================================================

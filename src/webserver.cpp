@@ -80,6 +80,7 @@ void initializeServer(PIDController* pid) {
     doc["pressure"] = shot.pressure;
     doc["goalPressure"] = shot.currentGoalPressure;
     doc["pumpPwm"] = shot.pumpPwm;
+    doc["pumpFlow"] = shot.pumpFlow;
 
     // Cleaning cycle status + live config (for the dashboard editors)
     JsonObject cl = doc["cleaning"].to<JsonObject>();

@@ -8,6 +8,7 @@
 #include "debug.h"
 #include "pid_controller.h"
 #include "pump_dimmer.h"
+#include "pump_model.h"
 #include "shot_history.h"
 #include "shot_stopper.h"
 #include "webserver.h"
@@ -18,6 +19,15 @@
 
 #define TESTING_MODE_NO_SCALE false     // Set to true to disable scale/BLE connection during testing
 #define TESTING_PRINT_SCALE_STATUS true // Print scale connection and pressure health status
+
+// Pressure control law during shots: gaggiuino-style feedforward from the
+// pump model (pump_model.cpp, needs PUMP_PSM_MODE for click counting) or the
+// classic PID (pid_controller.cpp, /set_pid stays functional either way)
+#define GAGGIUINO_PUMP_CONTROL true
+
+// Window for the click-rate flow estimate and dP/dt (10 windows/s; clicks
+// per window 0-5, EMA-smoothed on top)
+#define DERIVED_STATE_PERIOD_MS 100
 
 // ============================================================================
 // PIN CONFIGURATION
@@ -69,7 +79,10 @@ void setup() {
   // CPU and serial configuration
   // 240 MHz: WiFi (web server) + BLE (scale) share the radio and need headroom
   setCpuFrequencyMhz(240);
-  Serial.begin(9600);
+  // 115200: at 9600 the per-iteration debug lines took longer to transmit
+  // than a control iteration, and the blocked Serial writes throttled the
+  // control loop to ~6 Hz
+  Serial.begin(115200);
   delay(100);
   DEBUG_STARTUP_PRINT("========================================");
   DEBUG_STARTUP_PRINT("Smart Espresso Machine Starting");
@@ -207,6 +220,37 @@ void controlIteration() {
 
   updatePressureSensor(&shot);
 
+  // Derived state for the feedforward control law: dP/dt of the filtered
+  // pressure, and the model-estimated pump flow from the PSM click counter
+  // (one conducted mains cycle = one pump stroke). Computed over a 100 ms
+  // window - per-iteration click deltas at 100 Hz would only ever be 0 or 1
+  // and quantize the flow estimate to useless extremes.
+  static unsigned long lastDerivedMs = 0;
+  static uint32_t lastClickCount = 0;
+  static float lastPressure = 0.0f;
+  static float pressureChangeSpeed = 0.0f;
+  static float smoothedPumpFlow = 0.0f;
+
+  unsigned long nowMs = millis();
+  if (lastDerivedMs == 0) {
+    lastDerivedMs = nowMs;
+    lastPressure = shot.pressure;
+    lastClickCount = pumpDimmerClickCount();
+  } else if (nowMs - lastDerivedMs >= DERIVED_STATE_PERIOD_MS) {
+    float dt = (nowMs - lastDerivedMs) / 1000.0f;
+    pressureChangeSpeed = (shot.pressure - lastPressure) / dt;
+
+    uint32_t clicks = pumpDimmerClickCount();
+    float clicksPerSecond = (clicks - lastClickCount) / dt;
+    lastClickCount = clicks;
+    float flow = getPumpFlow(clicksPerSecond, shot.pressure);
+    smoothedPumpFlow += PUMP_FLOW_FILTER_ALPHA * (flow - smoothedPumpFlow);
+    shot.pumpFlow = smoothedPumpFlow;
+
+    lastPressure = shot.pressure;
+    lastDerivedMs = nowMs;
+  }
+
   // ========================================================================
   // SCALE CONNECTION AND DATA POLLING
   // ========================================================================
@@ -306,11 +350,20 @@ void controlIteration() {
     pwmValue = 255;
     DEBUG_ENCODER_PRINT("BREWING - waiting for pressure data, PWM: %d", pwmValue);
   } else {
-    // BREWING STATE: PID control for pressure regulation
+    // BREWING STATE: pressure regulation
     float goalPressure = shot.currentGoalPressure;
+    #if GAGGIUINO_PUMP_CONTROL
+    // Feedforward from the pump model plus proportional trim (pump_model.cpp)
+    float pct = getPumpPct(goalPressure, 0.0f, shot.pressure,
+                           smoothedPumpFlow, pressureChangeSpeed);
+    pwmValue = (int)roundf(pct * 255.0f);
+    DEBUG_ENCODER_PRINT("BREWING - target %.1f bar, current %.1f bar, flow %.2f ml/s, PWM: %d",
+                        goalPressure, shot.pressure, smoothedPumpFlow, pwmValue);
+    #else
     pwmValue = pressurePID.calculate(goalPressure, shot.pressure);
     DEBUG_ENCODER_PRINT("BREWING - target %.1f bar, current %.1f bar, PWM: %d",
                         goalPressure, shot.pressure, pwmValue);
+    #endif
   }
 
   DEBUG_ENCODER_PRINT("Encoder count: %ld | PWM output: %d", encoderPosition, pwmValue);
@@ -344,12 +397,14 @@ void controlIteration() {
   detectShotError(&shot, currentWeight);
 }
 
-// Control task: run the control iteration at a fixed ~50 ms cadence.
+// Control task: run the control iteration at a fixed ~10 ms cadence (100 Hz,
+// gaggiuino's ballpark) so the pump level updates every mains cycle or two
+// and the PSM pattern stays finely interleaved instead of bursting.
 // The web server runs asynchronously in the AsyncTCP task and never blocks this.
 void controlTask(void* param) {
   for (;;) {
     controlIteration();
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(pdMS_TO_TICKS(10));
   }
 }
 

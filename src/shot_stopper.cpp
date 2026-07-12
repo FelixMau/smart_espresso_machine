@@ -51,7 +51,8 @@ Shot shot = {
   0,     // goalWeight (set from EEPROM later)
   0,     // weightOffset (set from EEPROM later)
   255,   // pumpPwm (idle = full speed)
-  0      // peakPressure
+  0,     // peakPressure
+  0      // pumpFlow
 };
 
 // ============================================================================

@@ -7,8 +7,11 @@
 // DEBUG CONFIGURATION
 // ============================================================================
 
-// Master debug flag - set to false to disable all debug output and reduce memory
-#define DEBUG_ENABLED true
+// Master debug flag - set to false to disable all debug output and reduce memory.
+// Keep this OFF for real brewing: with it on, the per-iteration serial prints
+// block the control task once the TX buffer fills and throttle the 100 Hz
+// control loop (at 9600 baud it ran at ~6 Hz - slow, zigzagging pressure).
+#define DEBUG_ENABLED false
 
 // Category-specific debug flags (only active if DEBUG_ENABLED is true)
 #define DEBUG_SHOT true

@@ -2,23 +2,26 @@
 #define PUMP_DIMMER_H
 
 // ============================================================================
-// PUMP DIMMER - AC PHASE-ANGLE CONTROL (leading-edge / triac)
+// PUMP DIMMER - ZERO-CROSS SYNCED TRIAC CONTROL (PSM or phase-angle)
 // ============================================================================
-// Replaces the old plain 50 Hz LEDC PWM on the dimmer pin with proper
-// phase-angle control synchronized to the mains zero crossings:
+// Two firing schemes, selected by PUMP_PSM_MODE, both synchronized to the
+// mains zero crossings on ZERO_CROSS_PIN (GPIO 4, 100/s at 50 Hz):
 //
-//   zero cross (GPIO 4, 100/s at 50 Hz)
-//     -> gate LOW (triac stops conducting at the zero crossing by itself)
-//     -> one-shot hardware timer armed with the firing delay
-//   timer fires
-//     -> gate HIGH; held high until the next zero cross so the triac cannot
-//        drop out on the inductive pump load
+// PSM (pulse-skip modulation, gaggiuino-style, default): the vibratory pump
+// rectifies half-wave internally and does exactly one piston stroke per
+// conducted mains cycle. A Bresenham accumulator decides once per full cycle
+// (every 2nd zero cross) whether to conduct it whole (gate HIGH, one pump
+// stroke, "click") or skip it (gate LOW). Power = fraction of cycles fired,
+// spread as evenly as possible; conducted strokes are counted so the pump
+// doubles as a flow meter (pump_model.cpp).
 //
-// Firing delay is linear in the power level (rbdimmer.com formula):
-//   delay = (255 - level) / 255 * 10 ms
+// Phase-angle (leading edge): the zero cross drops the gate and arms a
+// one-shot hardware timer with delay = (255 - level) / 255 * 10 ms; the timer
+// raises the gate, held high until the next zero cross so the triac cannot
+// drop out on the inductive pump load.
 //
 // The power API keeps the 0-255 scale of the old ledcWrite() call, so the
-// PID controller and the web dashboard are unaffected.
+// controllers and the web dashboard are unaffected.
 //
 // Graceful degradation: if no zero crossings arrive (sensor unplugged, bench
 // setup without mains), the module falls back to plain on/off - any nonzero
@@ -26,6 +29,11 @@
 // never kill the pump mid-shot.
 
 #include <Arduino.h>
+
+// Pulse-skip modulation (whole-cycle firing + click counting) instead of
+// phase-angle. Right for vibratory pumps (ULKA/CEME style, as in the Dalla
+// Corte Mini); use phase-angle (false) for rotary pumps.
+#define PUMP_PSM_MODE true
 
 #define ZERO_CROSS_PIN 4  // Zero-cross detector output (rising edge per crossing)
 
@@ -40,5 +48,9 @@ void pumpDimmerSetPower(uint8_t level);
 
 // True while mains zero crossings are arriving on ZERO_CROSS_PIN
 bool pumpDimmerZcHealthy();
+
+// Cumulative count of conducted mains cycles (= pump strokes in PSM mode).
+// Callers keep their own last value and diff; the counter is never reset.
+uint32_t pumpDimmerClickCount();
 
 #endif // PUMP_DIMMER_H

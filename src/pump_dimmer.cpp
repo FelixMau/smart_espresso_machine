@@ -41,6 +41,15 @@ static volatile uint8_t powerLevel = 255;
 // Timestamp of the last accepted zero crossing (glitch filter + health check)
 static volatile uint32_t lastZcUs = 0;
 
+#if PUMP_PSM_MODE
+// Bresenham accumulator: fire a cycle whenever it wraps past the full range,
+// so any level 0-255 spreads its fired cycles as evenly as possible
+static const uint16_t PSM_RANGE = 255;
+static volatile uint16_t psmAccumulator = 0;
+static volatile bool psmSecondHalf = false;   // Which half of the mains cycle
+static volatile uint32_t psmClickCount = 0;   // Conducted cycles = pump strokes
+#endif
+
 // ============================================================================
 // INTERRUPT HANDLERS
 // ============================================================================
@@ -61,6 +70,26 @@ static void onZeroCross() {
     return;  // Ringing on the detector edge, not a real crossing
   }
   lastZcUs = now;
+
+#if PUMP_PSM_MODE
+  // The pump strokes once per full mains cycle (internal half-wave
+  // rectification), so decide once per cycle and hold the gate through both
+  // half-cycles; which polarity actually drives the coil doesn't matter.
+  psmSecondHalf = !psmSecondHalf;
+  if (psmSecondHalf) {
+    return;
+  }
+
+  psmAccumulator += powerLevel;
+  if (psmAccumulator >= PSM_RANGE) {
+    psmAccumulator -= PSM_RANGE;
+    digitalWrite(gatePin, HIGH);  // Conduct this cycle: one pump stroke
+    psmClickCount++;
+  } else {
+    digitalWrite(gatePin, LOW);   // Skip this cycle
+  }
+  return;
+#endif
 
   uint8_t level = powerLevel;
   if (level >= FULL_ON_LEVEL) {
@@ -100,12 +129,21 @@ void initPumpDimmer(int pin) {
 
   attachInterrupt(digitalPinToInterrupt(ZERO_CROSS_PIN), onZeroCross, RISING);
 
-  DEBUG_PUMP_PRINT("Phase-angle dimmer initialized (gate GPIO %d, zero cross GPIO %d)",
+  DEBUG_PUMP_PRINT("%s dimmer initialized (gate GPIO %d, zero cross GPIO %d)",
+                   PUMP_PSM_MODE ? "Pulse-skip (PSM)" : "Phase-angle",
                    gatePin, ZERO_CROSS_PIN);
 }
 
 bool pumpDimmerZcHealthy() {
   return (micros() - lastZcUs) < ZC_TIMEOUT_US;
+}
+
+uint32_t pumpDimmerClickCount() {
+#if PUMP_PSM_MODE
+  return psmClickCount;
+#else
+  return 0;
+#endif
 }
 
 void pumpDimmerSetPower(uint8_t level) {
@@ -117,7 +155,7 @@ void pumpDimmerSetPower(uint8_t level) {
   if (healthy != wasHealthy) {
     wasHealthy = healthy;
     if (healthy) {
-      DEBUG_PUMP_PRINT("Zero-cross sync acquired - phase-angle dimming active");
+      DEBUG_PUMP_PRINT("Zero-cross sync acquired - synced pump dimming active");
     } else {
       DEBUG_PUMP_PRINT("No zero crossings on GPIO %d - falling back to on/off pump control",
                        ZERO_CROSS_PIN);
