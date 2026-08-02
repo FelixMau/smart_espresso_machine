@@ -15,6 +15,10 @@ void initShotHistory() {
   shotHistoryLock = xSemaphoreCreateMutex();
 }
 
+uint32_t shotHistoryNextId() {
+  return nextShotId;
+}
+
 void recordShot(const float* timeS, const float* weight, const float* pressure,
                 int datapoints, float durationS, float peakPressure, int endReason) {
   if (datapoints <= 0) {

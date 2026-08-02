@@ -92,8 +92,9 @@ address always works.
 
 ## The API it speaks
 
-Implemented in [`../firmware/src/webserver.h`](../firmware/src/webserver.h). All responses are JSON;
-the older plain-text endpoints and the built-in HTML page still work unchanged.
+Implemented in [`../firmware/src/webserver.cpp`](../firmware/src/webserver.cpp). All responses are JSON;
+the dashboard's own endpoints (`/state`, `/start_shot`, …) and the built-in HTML
+page still work unchanged.
 
 | Endpoint | Purpose |
 |---|---|

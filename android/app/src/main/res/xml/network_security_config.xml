@@ -1,16 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   The ESP32 speaks plain HTTP on the local network, so cleartext has to be
-  allowed. It is limited to private address ranges plus .local names, so the app
-  still cannot talk cleartext to anything on the internet.
+  allowed.
+
+  It cannot be restricted to private address ranges: <domain> entries are
+  hostname matchers, not CIDRs — "192.168.0.0" matches that one literal
+  address and nothing else, so listing the RFC1918 blocks silently blocked
+  every real machine address (and the emulator's 10.0.2.2 host route).
+  The app only ever talks to the host configured in Settings, so permitting
+  cleartext outright is the honest version of what this file was trying to say.
 -->
 <network-security-config>
-    <base-config cleartextTrafficPermitted="false" />
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">local</domain>
-        <domain includeSubdomains="true">localhost</domain>
-        <domain includeSubdomains="true">10.0.0.0</domain>
-        <domain includeSubdomains="true">192.168.0.0</domain>
-        <domain includeSubdomains="true">172.16.0.0</domain>
-    </domain-config>
+    <base-config cleartextTrafficPermitted="true" />
 </network-security-config>

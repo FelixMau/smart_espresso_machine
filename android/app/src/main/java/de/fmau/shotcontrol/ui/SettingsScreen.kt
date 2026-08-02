@@ -72,7 +72,7 @@ fun SettingsScreen(
 
         Text(
             "Shot Control talks to the ESP32 over plain HTTP on your local " +
-                "network. Endpoints live in src/webserver.h.",
+                "network. Endpoints live in firmware/src/webserver.cpp.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

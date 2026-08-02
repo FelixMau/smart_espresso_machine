@@ -38,6 +38,11 @@ extern SemaphoreHandle_t shotHistoryLock;
 
 void initShotHistory();
 
+// Id the shot currently being pulled will get when it is recorded. Lets the
+// phone app tag live samples with the same id the finished shot ends up with,
+// so its curve does not jump when the shot is filed into the ring buffer.
+uint32_t shotHistoryNextId();
+
 // Snapshot + downsample a finished shot's trajectory into the ring buffer.
 // endReason is the EndType value at shot end (before it gets reset).
 void recordShot(const float* timeS, const float* weight, const float* pressure,
