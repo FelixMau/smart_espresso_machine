@@ -13,7 +13,7 @@ pcb/_autosave-*
 pcb/*-bak
 
 # WiFi credentials — never commit (use secrets.h.example as template)
-src/secrets.h
-test/secrets.h
+firmware/src/secrets.h
+firmware/test/secrets.h
 beanconqueror-interop-plan.md
 beanconqueror-gaggiuino-integration.md

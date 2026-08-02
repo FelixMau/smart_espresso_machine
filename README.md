@@ -50,6 +50,22 @@ should be able to start shot via app
 - [ ] If no Wifi is available advertise own wifi and on it the webserver to do the same as on the local network
 - [ ] Add another (manual)pressuresensor to evaluate accuracy of messurements, they sometimes feel a little off or I should adjust the expansionvalve
 
+### Repository layout
+```
+firmware/    ESP32 firmware (PlatformIO)  →  platformio run -d firmware -e upesy_wroom
+android/     Phone app (Gradle/Kotlin)    →  cd android && ./gradlew assembleDebug
+pcb/         KiCad project and gerbers
+datasheets/  Datasheets
+```
+
+### Android app
+There is a phone app in [`android/`](android/README.md): live readings, start/stop,
+goal weight, weight offset and the pressure profile editor, plus a journal that
+stores every shot's weight/pressure curve on the phone and charts it.
+
+It talks to the JSON API the ESP32 serves on the local network (see
+[`firmware/src/webserver.cpp`](firmware/src/webserver.cpp)).
+
 ### Future tasks:
 
 - [ ] Check on 230V safety and how to design properly with 230V on a espressomachine (that uses heats up water and puts it under pressure)
@@ -71,14 +87,14 @@ should be able to start shot via app
 
 ```bash
 # 1. Provide WiFi credentials (this file is gitignored — never commit it)
-cp src/secrets.h.example src/secrets.h   # then edit ssid / password
+cp firmware/src/secrets.h.example firmware/src/secrets.h   # then edit ssid / password
 
 # 2. Build and upload
-platformio run -e upesy_wroom
-platformio run -e upesy_wroom --target upload
+platformio run -d firmware -e upesy_wroom
+platformio run -d firmware -e upesy_wroom --target upload
 
 # 3. Watch serial output (dashboard URL is printed periodically)
-platformio device monitor
+platformio device monitor -d firmware
 ```
 
 The dashboard is then reachable at the IP the ESP32 prints on the serial console.

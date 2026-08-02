@@ -9,17 +9,33 @@ Reflect on the previous sessions we've had together. Use subagents to identify c
 
 ```bash
 # Build firmware
-platformio run -e upesy_wroom
+platformio run -d firmware -e upesy_wroom
 
 # Upload to device
-platformio run -e upesy_wroom --target upload
+platformio run -d firmware -e upesy_wroom --target upload
 
 # Monitor serial output (115200 baud; DEBUG_ENABLED in debug.h is off by default - serial prints throttle the 100 Hz control loop)
-platformio device monitor
+platformio device monitor -d firmware
 
 # Run tests
-platformio test
+platformio test -d firmware
+
+# Build the Android app
+cd android && ./gradlew assembleDebug
 ```
+
+## Repository Layout
+
+```
+firmware/       ESP32 firmware, PlatformIO project (platformio.ini, src/, test/)
+android/        Phone app, Gradle/Kotlin project — see android/README.md
+pcb/            KiCad 6 project and gerbers
+datasheets/     Datasheets
+```
+
+The firmware and the app share one API contract: `firmware/src/webserver.cpp`
+serves the HTTP endpoints, `android/.../data/MachineApi.kt` consumes them.
+Change both in the same commit.
 
 ## Project Overview
 
@@ -39,7 +55,7 @@ The system uses **linear regression** to predict when shots reach target weight 
 
 ## Architecture
 
-### Source Layout (everything lives in `src/`)
+### Source Layout (firmware lives in `firmware/src/`)
 
 Modules are `.h`/`.cpp` pairs: declarations (types, `extern` globals, function
 prototypes) in the header, definitions in the source file.
@@ -69,6 +85,11 @@ prototypes) in the header, definitions in the source file.
 Cross-task communication is via `volatile` flags declared in shot_stopper.h / webserver.h (`scaleConnected`, `scaleNewWeight`, `scaleTareRequest`, `webStartRequest`, `webStopRequest`, `webResetRequest`, ...).
 
 `TESTING_MODE_NO_SCALE` in main.cpp disables BLE entirely for bench testing without the scale.
+
+### Android App (`android/`)
+
+Kotlin/Compose phone app: live control plus a journal that stores and charts every
+shot's weight/pressure curve on the phone. Details in `android/README.md`.
 
 ### Core Data Structure: `struct Shot` (shot_stopper.h)
 
@@ -161,6 +182,10 @@ WiFi connects with a 15 s boot timeout; the firmware runs fine without it. REST 
 
 Dashboard features: live tiles, start/stop/reset, PID sliders, goal weight/offset editors, pressure profile editor, WiFi credential editor + reboot button, live Chart.js plots, shot history comparison. Chart.js loads from CDN, so the *client browser* needs internet; the ESP does not.
 
+**Android app contract (currently unmet).** The app in `android/` was written against an older `/api/*` surface (`/api/status`, `/api/shot?from=N`, `/api/profile`, `/api/start`, `/api/stop`, `/api/set_goal_weight`, `/api/set_weight_offset`, `/api/set_pressure_profile`). The firmware above serves the same data under different names (`/state`, `/start_shot`, ...) and only exposes the Gaggiuino-compatible `/api/*` routes. One side must be adapted before the app can talk to the machine.
+
+**Handlers must never block.** They run on the async server's own task, so they may not touch the BLE scale or sleep — they only raise `volatile` request flags that controlTask consumes.
+
 ## Configuration and Customization
 
 ### Build Settings (platformio.ini)
@@ -192,7 +217,7 @@ All persistence goes through one versioned `PersistentSettings` blob (magic `"ES
 
 ### WiFi Credentials
 
-`src/secrets.h`:
+`firmware/src/secrets.h` holds the WiFi credentials:
 ```cpp
 #define ssid "your_ssid"
 #define password "your_password"
@@ -228,6 +253,11 @@ Other tasks never call the scale directly — they set `scaleTareRequest` / `sca
 
 ### Header Guard Gotcha
 webserver.h intentionally uses `ESPRESSO_WEBSERVER_H` as its guard — `WEBSERVER_H` would make ESPAsyncWebServer think the core WebServer library is present and skip defining `HTTP_GET` etc.
+### Unit Tests
+```bash
+platformio test -d firmware
+```
+PlatformIO framework supports native unit tests.
 
 ## Hardware and PCB Status
 
