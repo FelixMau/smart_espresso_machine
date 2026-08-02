@@ -3,6 +3,7 @@
 #include <EEPROM.h>
 
 #include "debug.h"
+#include "pressure_profile.h"
 
 // ============================================================================
 // EEPROM LAYOUT
@@ -33,14 +34,35 @@ static SemaphoreHandle_t settingsLock = nullptr;
 // ============================================================================
 
 static bool inRange(float v, float lo, float hi) {
-  return !isnan(v) && v >= lo && v <= hi;
+  return isfinite(v) && v >= lo && v <= hi;
+}
+
+static PressureProfile profileFromSettings() {
+  PressureProfile profile = {};
+  profile.numByTime = settings.numGoalsByTime;
+  profile.numByTimeLeft = settings.numGoalsByTimeLeft;
+  memcpy(profile.byTime, settings.goalsByTime, sizeof(profile.byTime));
+  memcpy(profile.byTimeLeft, settings.goalsByTimeLeft, sizeof(profile.byTimeLeft));
+  return profile;
+}
+
+static void storeProfileInSettings(const PressureProfile& profile) {
+  settings.numGoalsByTime = profile.numByTime;
+  settings.numGoalsByTimeLeft = profile.numByTimeLeft;
+  memset(settings.goalsByTime, 0, sizeof(settings.goalsByTime));
+  memset(settings.goalsByTimeLeft, 0, sizeof(settings.goalsByTimeLeft));
+  memcpy(settings.goalsByTime, profile.byTime,
+         profile.numByTime * sizeof(profile.byTime[0]));
+  memcpy(settings.goalsByTimeLeft, profile.byTimeLeft,
+         profile.numByTimeLeft * sizeof(profile.byTimeLeft[0]));
 }
 
 // Sanitize the blob in place (covers both a corrupted blob that still passed
 // the magic check and out-of-range legacy migration values). Ranges mirror
 // the /set_* handlers; cleaning fields fall back to the compiled-in defaults
 // still present in cleaningConfig when this runs during boot.
-static void validateSettings(const CleaningConfig& cleaningDefaults) {
+static void validateSettings(const CleaningConfig& cleaningDefaults,
+                             const PressureProfile& pressureDefaults) {
   if (!inRange(settings.goalWeight, 10, 200)) {
     settings.goalWeight = 36;
     DEBUG_STARTUP_PRINT("Goal weight out of range, set to default: 36 g");
@@ -50,11 +72,15 @@ static void validateSettings(const CleaningConfig& cleaningDefaults) {
     DEBUG_STARTUP_PRINT("Offset out of range, set to default: 1.5 g");
   }
 
-  if (settings.numGoalsByTime > MAX_PRESSURE_GOALS) {
-    settings.numGoalsByTime = 0;
-  }
-  if (settings.numGoalsByTimeLeft > MAX_PRESSURE_GOALS) {
-    settings.numGoalsByTimeLeft = 0;
+  PressureProfile storedProfile = profileFromSettings();
+  String profileError;
+  if (!pressureProfileIsValid(storedProfile, &profileError)) {
+    storeProfileInSettings(pressureDefaults);
+    DEBUG_STARTUP_PRINT("Pressure profile invalid, restored defaults");
+  } else {
+    // Canonicalize inactive slots so stack/flash garbage can never be revived
+    // by a later count corruption.
+    storeProfileInSettings(storedProfile);
   }
 
   CleaningConfig& c = settings.cleaning;
@@ -91,6 +117,8 @@ void settingsLoad() {
 
   // Compiled-in defaults, captured before anything overwrites the live state
   const CleaningConfig cleaningDefaults = cleaningConfig;
+  PressureProfile pressureDefaults = {};
+  pressureProfileSnapshot(shot, &pressureDefaults);
 
   EEPROM.get(SETTINGS_ADDR, settings);
   if (settings.magic != SETTINGS_MAGIC || settings.version != SETTINGS_VERSION) {
@@ -100,24 +128,19 @@ void settingsLoad() {
     DEBUG_STARTUP_PRINT("No settings blob found - migrating legacy EEPROM values and defaults");
     settings.goalWeight = EEPROM.read(LEGACY_WEIGHT_ADDR);
     settings.weightOffset = EEPROM.read(LEGACY_OFFSET_ADDR) / 10.0f;
-    settings.numGoalsByTime = shot.numPressureGoalsByTime;
-    settings.numGoalsByTimeLeft = shot.numPressureGoalsByTimeLeft;
-    memcpy(settings.goalsByTime, shot.pressureGoalByTime, sizeof(settings.goalsByTime));
-    memcpy(settings.goalsByTimeLeft, shot.pressureGoalByTimeLeft, sizeof(settings.goalsByTimeLeft));
+    storeProfileInSettings(pressureDefaults);
     settings.cleaning = cleaningDefaults;
     settings.wifiSsid[0] = '\0';
     settings.wifiPassword[0] = '\0';
   }
 
-  validateSettings(cleaningDefaults);
+  validateSettings(cleaningDefaults, pressureDefaults);
 
   // Apply to the live state (tasks aren't running yet, no locking needed)
   shot.goalWeight = settings.goalWeight;
   shot.weightOffset = settings.weightOffset;
-  shot.numPressureGoalsByTime = settings.numGoalsByTime;
-  shot.numPressureGoalsByTimeLeft = settings.numGoalsByTimeLeft;
-  memcpy(shot.pressureGoalByTime, settings.goalsByTime, sizeof(shot.pressureGoalByTime));
-  memcpy(shot.pressureGoalByTimeLeft, settings.goalsByTimeLeft, sizeof(shot.pressureGoalByTimeLeft));
+  PressureProfile storedProfile = profileFromSettings();
+  pressureProfileApply(&shot, storedProfile);
   cleaningConfig = settings.cleaning;
 
   // Persist migration/sanitization results (no-op flash-wise if unchanged)
@@ -137,10 +160,18 @@ void settingsSave() {
 
   settings.goalWeight = shot.goalWeight;
   settings.weightOffset = shot.weightOffset;
-  settings.numGoalsByTime = shot.numPressureGoalsByTime;
-  settings.numGoalsByTimeLeft = shot.numPressureGoalsByTimeLeft;
-  memcpy(settings.goalsByTime, shot.pressureGoalByTime, sizeof(settings.goalsByTime));
-  memcpy(settings.goalsByTimeLeft, shot.pressureGoalByTimeLeft, sizeof(settings.goalsByTimeLeft));
+  PressureProfile profile = {};
+  pressureProfileSnapshot(shot, &profile);
+  String profileError;
+  if (!pressureProfileIsValid(profile, &profileError)) {
+    DEBUG_STARTUP_PRINT("Settings save skipped - invalid pressure profile: %s",
+                        profileError.c_str());
+    if (settingsLock) {
+      xSemaphoreGive(settingsLock);
+    }
+    return;
+  }
+  storeProfileInSettings(profile);
   settings.cleaning = cleaningConfig;
   commitBlob();
 

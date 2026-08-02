@@ -6,6 +6,7 @@
 #include "cleaning_cycle.h"
 #include "debug.h"
 #include "pid_controller.h"
+#include "pressure_profile.h"
 #include "pump_dimmer.h"
 #include "pump_model.h"
 #include "settings.h"
@@ -134,7 +135,7 @@ void setup() {
   initShotHistory();
 
   // WiFi and web server (LAN dashboard). Boot continues without the
-  // dashboard if WiFi is unavailable (15s timeout).
+  // dashboard if WiFi is unavailable (15s timeout per distinct credential set).
   if (initializeWiFi()) {
     initializeServer(&pressurePID);
   }
@@ -339,6 +340,13 @@ void controlIteration() {
   } else {
     // BREWING STATE: pressure regulation
     float goalPressure = shot.currentGoalPressure;
+    if (!pressureProfilePressureIsSafe(goalPressure)) {
+      // Defense in depth: malformed EEPROM or a future caller must never feed
+      // non-finite/out-of-range data into either control law.
+      pwmValue = 0;
+      webStopRequest = true;
+      DEBUG_ENCODER_PRINT("BREWING - invalid target pressure, stopping shot");
+    } else {
     #if GAGGIUINO_PUMP_CONTROL
     // Feedforward from the pump model plus proportional trim (pump_model.cpp)
     float pct = getPumpPct(goalPressure, 0.0f, shot.pressure,
@@ -351,6 +359,7 @@ void controlIteration() {
     DEBUG_ENCODER_PRINT("BREWING - target %.1f bar, current %.1f bar, PWM: %d",
                         goalPressure, shot.pressure, pwmValue);
     #endif
+    }
   }
 
   DEBUG_ENCODER_PRINT("Encoder count: %ld | PWM output: %d", encoderPosition, pwmValue);

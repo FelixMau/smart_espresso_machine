@@ -12,9 +12,11 @@
 #include "cleaning_cycle.h"
 #include "dashboard.h"
 #include "debug.h"
+#include "pressure_profile.h"
 #include "settings.h"
 #include "shot_history.h"
 #include "shot_stopper.h"
+#include "wifi_credentials.h"
 
 #define WIFI_CONNECT_TIMEOUT_MS 15000
 
@@ -30,6 +32,25 @@ static AsyncWebServer server(80);
 
 // PID controller to monitor/tune, set by initializeServer()
 static PIDController* webPid = nullptr;
+
+static bool parseFiniteFloat(String token, float* value) {
+  token.trim();
+  if (!value || token.length() == 0) {
+    return false;
+  }
+
+  char* end = nullptr;
+  float parsed = strtof(token.c_str(), &end);
+  if (end == token.c_str() || *end != '\0' || !isfinite(parsed)) {
+    return false;
+  }
+  *value = parsed;
+  return true;
+}
+
+static bool inRange(float value, float minValue, float maxValue) {
+  return isfinite(value) && value >= minValue && value <= maxValue;
+}
 
 // Try one set of credentials with a bounded wait; returns the WiFi status
 static bool tryWifi(const char* trySsid, const char* tryPass) {
@@ -50,10 +71,18 @@ bool initializeWiFi() {
   // Credentials stored via /set_wifi win; fall back to the compile-time
   // secrets.h ones if none are stored OR the stored ones fail to connect,
   // so a typo'd password can't brick the dashboard permanently
-  bool storedCreds = settings.wifiSsid[0] != '\0';
+  const bool storedCreds = settings.wifiSsid[0] != '\0';
   wifiConnected = tryWifi(storedCreds ? settings.wifiSsid : ssid,
                           storedCreds ? settings.wifiPassword : password);
-  if (!wifiConnected && storedCreds && strcmp(settings.wifiSsid, ssid) != 0) {
+  // Only suppress the fallback when both credential pairs are identical.
+  // Comparing the SSID alone would skip recovery after changing (or typoing)
+  // the password for the same network.
+  const bool compileTimeCredsDiffer =
+      storedCreds && wifiCredentialPairsDiffer(settings.wifiSsid, settings.wifiPassword,
+                                               ssid, password);
+  bool fallbackAttempted = false;
+  if (!wifiConnected && compileTimeCredsDiffer) {
+    fallbackAttempted = true;
     DEBUG_STARTUP_PRINT("Stored WiFi credentials failed - trying compile-time secrets.h");
     wifiConnected = tryWifi(ssid, password);
   }
@@ -65,54 +94,39 @@ bool initializeWiFi() {
     configTime(0, 0, "pool.ntp.org");
   } else {
     DEBUG_STARTUP_PRINT("WiFi connection failed after %d ms - web dashboard disabled",
-                        WIFI_CONNECT_TIMEOUT_MS);
+                        WIFI_CONNECT_TIMEOUT_MS * (fallbackAttempted ? 2 : 1));
   }
   return wifiConnected;
 }
 
-// Parses two comma-separated lists into the pressure profile. Positive time =
-// seconds from shot start; negative time = seconds left until the expected end.
-// Shared by /set_pressure_profile (dashboard) and /api/set_pressure_profile
-// (phone app), which differ only in how they answer.
-static void applyPressureProfile(String times, String pressures) {
-  // Parse into locals first, then publish counts last, so the control task
-  // never sees a half-written profile
-  PressureGoalByTime byTime[MAX_PRESSURE_GOALS];
-  PressureGoalByTimeLeft byTimeLeft[MAX_PRESSURE_GOALS];
-  int numByTime = 0, numByTimeLeft = 0;
-
-  while (times.length() && pressures.length() &&
-         (numByTime < MAX_PRESSURE_GOALS || numByTimeLeft < MAX_PRESSURE_GOALS)) {
-    int timeIdx = times.indexOf(',');
-    String timeStr = timeIdx >= 0 ? times.substring(0, timeIdx) : times;
-    times = timeIdx >= 0 ? times.substring(timeIdx + 1) : "";
-    int pressureIdx = pressures.indexOf(',');
-    String pressureStr = pressureIdx >= 0 ? pressures.substring(0, pressureIdx) : pressures;
-    pressures = pressureIdx >= 0 ? pressures.substring(pressureIdx + 1) : "";
-
-    float timeVal = timeStr.toFloat();
-    float pressureVal = pressureStr.toFloat();
-
-    if (timeVal < 0 && numByTimeLeft < MAX_PRESSURE_GOALS) {
-      byTimeLeft[numByTimeLeft].timeLeftS = -timeVal;
-      byTimeLeft[numByTimeLeft].pressure = pressureVal;
-      numByTimeLeft++;
-    } else if (timeVal >= 0 && numByTime < MAX_PRESSURE_GOALS) {
-      byTime[numByTime].timeS = timeVal;
-      byTime[numByTime].pressure = pressureVal;
-      numByTime++;
+// Shared by the dashboard and phone API so both enforce exactly the same
+// all-or-nothing validation and coherent publication rules.
+static bool applyPressureProfile(const String& times, const String& pressures,
+                                 String* error) {
+  PressureProfile profile = {};
+  if (!parsePressureProfile(times, pressures, &profile, error)) {
+    return false;
+  }
+  if (!pressureProfileApply(&shot, profile)) {
+    if (error) {
+      *error = "could not apply pressure profile";
     }
+    return false;
   }
 
-  shot.numPressureGoalsByTime = 0;
-  shot.numPressureGoalsByTimeLeft = 0;
-  memcpy(shot.pressureGoalByTime, byTime, sizeof(byTime));
-  memcpy(shot.pressureGoalByTimeLeft, byTimeLeft, sizeof(byTimeLeft));
-  shot.numPressureGoalsByTime = numByTime;
-  shot.numPressureGoalsByTimeLeft = numByTimeLeft;
   DEBUG_SHOT_PRINT("Pressure profile set via web: %d by-time, %d by-time-left goals",
-                   numByTime, numByTimeLeft);
+                   profile.numByTime, profile.numByTimeLeft);
   settingsSave();
+  return true;
+}
+
+static void sendJsonError(AsyncWebServerRequest* req, int status,
+                          const String& error) {
+  JsonDocument doc;
+  doc["error"] = error;
+  String body;
+  serializeJson(doc, body);
+  req->send(status, "application/json", body);
 }
 
 // Reads a parameter from the query string or, failing that, a form body -
@@ -186,15 +200,17 @@ void initializeServer(PIDController* pid) {
 
     // Pressure profile: by-time goals as positive times, by-time-left goals
     // as negative times (same convention as /set_pressure_profile input)
+    PressureProfile profile = {};
+    pressureProfileSnapshot(shot, &profile);
     JsonArray times = doc["profileTimes"].to<JsonArray>();
     JsonArray pressures = doc["profilePressures"].to<JsonArray>();
-    for (int i = 0; i < shot.numPressureGoalsByTime; i++) {
-      times.add(shot.pressureGoalByTime[i].timeS);
-      pressures.add(shot.pressureGoalByTime[i].pressure);
+    for (int i = 0; i < profile.numByTime; i++) {
+      times.add(profile.byTime[i].timeS);
+      pressures.add(profile.byTime[i].pressure);
     }
-    for (int i = 0; i < shot.numPressureGoalsByTimeLeft; i++) {
-      times.add(-shot.pressureGoalByTimeLeft[i].timeLeftS);
-      pressures.add(shot.pressureGoalByTimeLeft[i].pressure);
+    for (int i = 0; i < profile.numByTimeLeft; i++) {
+      times.add(-profile.byTimeLeft[i].timeLeftS);
+      pressures.add(profile.byTimeLeft[i].pressure);
     }
 
     AsyncResponseStream* res = req->beginResponseStream("application/json");
@@ -265,9 +281,24 @@ void initializeServer(PIDController* pid) {
   // Live PID tuning; each gain is optional
   server.on("/set_pid", HTTP_GET, [](AsyncWebServerRequest* req) {
     if (webPid) {
-      if (req->hasParam("kp")) webPid->kp = req->getParam("kp")->value().toFloat();
-      if (req->hasParam("ki")) webPid->ki = req->getParam("ki")->value().toFloat();
-      if (req->hasParam("kd")) webPid->kd = req->getParam("kd")->value().toFloat();
+      float kp = webPid->kp, ki = webPid->ki, kd = webPid->kd;
+      bool valid = true;
+      if (req->hasParam("kp")) {
+        valid = parseFiniteFloat(req->getParam("kp")->value(), &kp) && inRange(kp, 0, 100);
+      }
+      if (valid && req->hasParam("ki")) {
+        valid = parseFiniteFloat(req->getParam("ki")->value(), &ki) && inRange(ki, 0, 5);
+      }
+      if (valid && req->hasParam("kd")) {
+        valid = parseFiniteFloat(req->getParam("kd")->value(), &kd) && inRange(kd, 0, 50);
+      }
+      if (!valid) {
+        req->send(400, "text/plain", "PID gains must be finite and within their allowed ranges");
+        return;
+      }
+      webPid->kp = kp;
+      webPid->ki = ki;
+      webPid->kd = kd;
       DEBUG_SHOT_PRINT("PID gains set via web: Kp=%.1f Ki=%.2f Kd=%.1f",
                        webPid->kp, webPid->ki, webPid->kd);
     }
@@ -299,10 +330,22 @@ void initializeServer(PIDController* pid) {
   // Pressure profile: comma-separated times and pressures. Positive time =
   // seconds from shot start; negative time = seconds left until expected end.
   server.on("/set_pressure_profile", HTTP_GET, [](AsyncWebServerRequest* req) {
-    if (req->hasParam("times") && req->hasParam("pressures")) {
-      applyPressureProfile(req->getParam("times")->value(),
-                           req->getParam("pressures")->value());
+    if (!req->hasParam("times") || !req->hasParam("pressures")) {
+      req->send(400, "text/plain", "times and pressures are required");
+      return;
     }
+    if (shot.brewing) {
+      req->send(409, "text/plain", "cannot change pressure profile during a shot");
+      return;
+    }
+
+    String error;
+    if (!applyPressureProfile(req->getParam("times")->value(),
+                              req->getParam("pressures")->value(), &error)) {
+      req->send(400, "text/plain", error);
+      return;
+    }
+
     req->send(200, "text/plain", "OK");
   });
 
@@ -469,18 +512,20 @@ void initializeServer(PIDController* pid) {
 
   // The pressure profile in the shape the app's editor expects
   server.on("/api/profile", HTTP_GET, [](AsyncWebServerRequest* req) {
+    PressureProfile profile = {};
+    pressureProfileSnapshot(shot, &profile);
     JsonDocument doc;
     JsonArray byTime = doc["byTime"].to<JsonArray>();
-    for (int i = 0; i < shot.numPressureGoalsByTime; i++) {
+    for (int i = 0; i < profile.numByTime; i++) {
       JsonArray p = byTime.add<JsonArray>();
-      p.add(shot.pressureGoalByTime[i].timeS);
-      p.add(shot.pressureGoalByTime[i].pressure);
+      p.add(profile.byTime[i].timeS);
+      p.add(profile.byTime[i].pressure);
     }
     JsonArray byTimeLeft = doc["byTimeLeft"].to<JsonArray>();
-    for (int i = 0; i < shot.numPressureGoalsByTimeLeft; i++) {
+    for (int i = 0; i < profile.numByTimeLeft; i++) {
       JsonArray p = byTimeLeft.add<JsonArray>();
-      p.add(shot.pressureGoalByTimeLeft[i].timeLeftS);
-      p.add(shot.pressureGoalByTimeLeft[i].pressure);
+      p.add(profile.byTimeLeft[i].timeLeftS);
+      p.add(profile.byTimeLeft[i].pressure);
     }
     AsyncResponseStream* res = req->beginResponseStream("application/json");
     serializeJson(doc, *res);
@@ -531,7 +576,17 @@ void initializeServer(PIDController* pid) {
       req->send(400, "application/json", "{\"error\":\"times and pressures required\"}");
       return;
     }
-    applyPressureProfile(times, pressures);
+    if (shot.brewing) {
+      req->send(409, "application/json",
+                "{\"error\":\"cannot change pressure profile during a shot\"}");
+      return;
+    }
+
+    String error;
+    if (!applyPressureProfile(times, pressures, &error)) {
+      sendJsonError(req, 400, error);
+      return;
+    }
     req->send(200, "application/json", "{\"ok\":true}");
   });
 

@@ -26,6 +26,7 @@
 
 #define TREND_LINE_DATAPOINTS 10  // Regression window (accuracy vs latency)
 #define MAX_SHOT_DATAPOINTS 1000  // Capacity of the per-shot trajectory arrays
+#define MAX_PROFILE_PRESSURE_BAR 16.0f // Pressure sensor/profile safety ceiling
 
 // ============================================================================
 // USER CONFIGURATION

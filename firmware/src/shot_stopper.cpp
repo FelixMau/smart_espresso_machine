@@ -2,8 +2,10 @@
 
 #include "cleaning_cycle.h"
 #include "debug.h"
+#include "pressure_profile.h"
 #include "settings.h"
 #include "shot_history.h"
+#include "shot_prediction.h"
 
 // ============================================================================
 // SHARED STATE DEFINITIONS
@@ -124,22 +126,10 @@ static void calculateEndTime(Shot* s) {
     return;
   }
 
-  float sumXY = 0, sumX = 0, sumY = 0, sumSquaredX = 0;
-  for (int i = s->datapoints - TREND_LINE_DATAPOINTS; i < s->datapoints; i++) {
-    sumXY += s->timeS[i] * s->weight[i];
-    sumX += s->timeS[i];
-    sumY += s->weight[i];
-    sumSquaredX += s->timeS[i] * s->timeS[i];
-  }
-
-  float m = (TREND_LINE_DATAPOINTS * sumXY - sumX * sumY)
-            / (TREND_LINE_DATAPOINTS * sumSquaredX - sumX * sumX);
-  float meanX = sumX / TREND_LINE_DATAPOINTS;
-  float meanY = sumY / TREND_LINE_DATAPOINTS;
-  float b = meanY - m * meanX;
-
-  // Time at which the goal weight will be reached: x = (y - b) / m
-  s->expectedEndS = (s->goalWeight - s->weightOffset - b) / m;
+  int first = s->datapoints - TREND_LINE_DATAPOINTS;
+  predictShotEnd(&s->timeS[first], &s->weight[first], TREND_LINE_DATAPOINTS,
+                 s->goalWeight - s->weightOffset, s->shotTimer,
+                 MAX_SHOT_DURATION_S, &s->expectedEndS);
 }
 
 void setBrewingState(bool brewing) {
@@ -147,6 +137,7 @@ void setBrewingState(bool brewing) {
     DEBUG_SHOT_PRINT("Shot started");
     shot.startTimestampS = secondsSinceBoot();
     shot.shotTimer = 0;
+    shot.expectedEndS = MAX_SHOT_DURATION_S;
     shot.datapoints = 0;
     shot.peakPressure = 0;
     scaleStartSequenceRequest = true; // Scale task: resetTimer + startTimer (+ tare)
@@ -198,19 +189,10 @@ void updateShotTrajectory(Shot* s, float weight) {
   // Get the likely end time of the shot
   calculateEndTime(s);
 
-  // Pressure goal: latest by-time goal that has been reached...
-  float goalPressure = 0.0f;
-  for (int i = 0; i < s->numPressureGoalsByTime; i++) {
-    if (s->shotTimer >= s->pressureGoalByTime[i].timeS) {
-      goalPressure = s->pressureGoalByTime[i].pressure;
-    }
-  }
-  // ...overridden by any by-time-left goal that applies
   float timeLeft = s->expectedEndS - s->shotTimer;
-  for (int i = 0; i < s->numPressureGoalsByTimeLeft; i++) {
-    if (timeLeft <= s->pressureGoalByTimeLeft[i].timeLeftS) {
-      goalPressure = s->pressureGoalByTimeLeft[i].pressure;
-    }
+  float goalPressure = pressureProfileGoalAt(*s, s->shotTimer, timeLeft);
+  if (!pressureProfilePressureIsSafe(goalPressure)) {
+    goalPressure = 0.0f;
   }
   s->currentGoalPressure = goalPressure;
 
@@ -226,21 +208,27 @@ void updateShotTrajectory(Shot* s, float weight) {
 }
 
 void handleMaxDurationReached(Shot* s) {
-  if (s->brewing && s->shotTimer > MAX_SHOT_DURATION_S) {
+  float elapsedS = secondsSinceBoot() - s->startTimestampS;
+  if (s->brewing && elapsedS > MAX_SHOT_DURATION_S) {
     s->brewing = false;
     DEBUG_SHOT_PRINT("Max brew duration reached (%.1f s > %.1f s)",
-                     s->shotTimer, (float)MAX_SHOT_DURATION_S);
+                     elapsedS, (float)MAX_SHOT_DURATION_S);
     s->end = EndType::TIME;
     setBrewingState(s->brewing);
   }
 }
 
 void handleShotEnd(Shot* s, float weight) {
+  float targetWeight = s->goalWeight - s->weightOffset;
+  bool measuredTargetReached = isfinite(weight) && isfinite(targetWeight) &&
+                               weight >= targetWeight;
+  bool predictedEndReached = isfinite(s->expectedEndS) &&
+                             s->shotTimer >= s->expectedEndS;
   if (s->brewing
-      && s->shotTimer >= s->expectedEndS
+      && (measuredTargetReached || predictedEndReached)
       && s->shotTimer > MIN_SHOT_DURATION_S) {
-    DEBUG_SHOT_PRINT("Goal weight achieved (%.1f g >= %.1f g - %.1f g offset)",
-                     weight, s->goalWeight, s->weightOffset);
+    DEBUG_SHOT_PRINT("Weight stop reached (weight %.1f g, target %.1f g, predicted end %.1f s)",
+                     weight, targetWeight, s->expectedEndS);
     s->brewing = false;
     s->end = EndType::WEIGHT;
     setBrewingState(s->brewing);

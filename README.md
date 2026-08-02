@@ -45,7 +45,7 @@ Live monitoring, start/stop/reset, PID tuning, goal weight and pressure profile 
 - [ ] Design cases for PCB, display, knob
 - [ ] Design import to beanconqueror -> custom machine
 should be able to start shot via app
-- [ ] Implement correct zero crosing detection and update pwm control accordingly
+- [x] Implement correct zero crosing detection and update pwm control accordingly
 - [ ] Cleaning mode/cycle for descale and for detergent
 - [ ] If no Wifi is available advertise own wifi and on it the webserver to do the same as on the local network
 - [ ] Add another (manual)pressuresensor to evaluate accuracy of messurements, they sometimes feel a little off or I should adjust the expansionvalve

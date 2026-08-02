@@ -297,13 +297,19 @@ function setCleaning() {
   fetch(`/set_cleaning?max_pressure=${clMaxP.value}&cycles=${clCycles.value}` +
         `&hold_s=${clHold.value}&pause_s=${clPause.value}&soak_s=${clSoak.value}`);
 }
+const isFiniteNumber = v => typeof v === 'number' && Number.isFinite(v);
+const formatNumber = (v, digits = 1, suffix = '') =>
+  isFiniteNumber(v) ? v.toFixed(digits) + suffix : '—';
+
 function cleanStatusText(c) {
   if (!c.active) {
     return c.phase === 'done' ? 'Cleaning complete.'
          : 'Idle. Add detergent to the blind basket, lock in, then start.';
   }
   if (c.phase === 'soak') {
-    return `Soaking detergent… ${Math.max(0, c.soakS - c.elapsed).toFixed(0)} s left`;
+    const left = isFiniteNumber(c.soakS) && isFiniteNumber(c.elapsed)
+      ? formatNumber(Math.max(0, c.soakS - c.elapsed), 0) : '—';
+    return `Soaking detergent… ${left} s left`;
   }
   if (c.phase === 'await_rinse') {
     return 'Remove portafilter, rinse blind basket and group, lock back in, then press Confirm rinse.';
@@ -311,16 +317,22 @@ function cleanStatusText(c) {
   const ph = c.phase === 'detergent' ? 'Detergent' : 'Rinse';
   let txt = `${ph} flush ${c.cycle}/${c.cycles}: `;
   if (c.state === 'pressurize') txt += 'pressurizing…';
-  else if (c.state === 'hold') txt += `holding at ${c.maxPressure.toFixed(1)} bar`;
+  else if (c.state === 'hold') txt += `holding at ${formatNumber(c.maxPressure)} bar`;
   else txt += 'released - venting through valve';
-  if (c.lastFillPeak > 0) {
-    txt += ` (last peak ${c.lastFillPeak.toFixed(1)} bar${c.lastFillReachedMax ? '' : ' ⚠ max never reached - blind basket inserted?'})`;
+  if (isFiniteNumber(c.lastFillPeak) && c.lastFillPeak > 0) {
+    txt += ` (last peak ${formatNumber(c.lastFillPeak)} bar${c.lastFillReachedMax ? '' : ' ⚠ max never reached - blind basket inserted?'})`;
   }
   return txt;
 }
-function setProfile() {
-  fetch('/set_pressure_profile?times=' + encodeURIComponent(profTimes.value)
-      + '&pressures=' + encodeURIComponent(profPressures.value));
+async function setProfile() {
+  try {
+    const res = await fetch('/set_pressure_profile?times=' + encodeURIComponent(profTimes.value)
+        + '&pressures=' + encodeURIComponent(profPressures.value));
+    const message = await res.text();
+    if (!res.ok) alert('Pressure profile rejected: ' + message);
+  } catch (err) {
+    alert('Could not update pressure profile: ' + err.message);
+  }
 }
 async function setWifi() {
   const res = await fetch('/set_wifi?ssid=' + encodeURIComponent(wifiSsid.value)
@@ -346,8 +358,8 @@ async function loadHistory() {
       const color = SERIES[(s.id - 1) % SERIES.length]; // color follows the shot, not its rank
       histBody.insertAdjacentHTML('beforeend',
         `<tr><td><span class="swatch" style="background:${color}"></span>#${s.id}</td>` +
-        `<td>${s.duration.toFixed(1)}</td><td>${s.finalWeight.toFixed(1)}</td>` +
-        `<td>${s.peakPressure.toFixed(1)}</td><td>${s.endReason}</td></tr>`);
+        `<td>${formatNumber(s.duration)}</td><td>${formatNumber(s.finalWeight)}</td>` +
+        `<td>${formatNumber(s.peakPressure)}</td><td>${s.endReason}</td></tr>`);
       const traj = await (await fetch('/shot?id=' + s.id)).json();
       datasets.push({
         label: 'Shot #' + s.id,
@@ -364,66 +376,91 @@ async function loadHistory() {
 let brewing = false;
 const txt = (id, v) => document.getElementById(id).textContent = v;
 
+function renderState(s) {
+  const c = s.cleaning || {};
+  txt('tState', c.active ? 'Cleaning' : (s.brewing ? 'Brewing' : 'Idle'));
+  cleanStartBtn.disabled = !!c.active || s.brewing;
+  cleanContinueBtn.disabled = c.phase !== 'await_rinse';
+  document.getElementById('cleanStatus').textContent = cleanStatusText(c);
+  txt('tScale', s.scaleConnected ? 'Connected' : 'Offline');
+  document.getElementById('tScale').className = 'value ' + (s.scaleConnected ? 'ok' : 'bad');
+  startBtn.disabled = !s.scaleConnected;  // no shots without a scale
+  txt('tTime', formatNumber(s.shotTimer, 1, ' s'));
+  txt('tEnd', formatNumber(s.expectedEnd));
+  txt('tWeight', formatNumber(s.weight, 1, ' g'));
+  txt('tGoalW', formatNumber(s.goalWeight));
+  txt('tOffset', formatNumber(s.weightOffset));
+  txt('tPressure', formatNumber(s.pressure, 1, ' bar'));
+  txt('tGoalP', formatNumber(s.goalPressure));
+  txt('tPump', isFiniteNumber(s.pumpPwm) ? Math.round(s.pumpPwm / 255 * 100) + '%' : '—');
+  txt('tPwm', isFiniteNumber(s.pumpPwm) ? s.pumpPwm : '—');
+  if (s.pid) {
+    txt('tPidOut', formatNumber(s.pid.out, 0));
+    txt('tP', formatNumber(s.pid.p));
+    txt('tI', formatNumber(s.pid.i));
+    txt('tD', formatNumber(s.pid.d));
+  }
+
+  // Populate editors once, so polling doesn't fight the user's edits
+  if (!initialized) {
+    initialized = true;
+    if (isFiniteNumber(s.goalWeight)) goalW.value = s.goalWeight;
+    if (isFiniteNumber(s.weightOffset)) offset.value = s.weightOffset;
+    offsetVal.textContent = formatNumber(s.weightOffset);
+    if (s.pid) {
+      if (isFiniteNumber(s.pid.kp)) kp.value = s.pid.kp;
+      if (isFiniteNumber(s.pid.ki)) ki.value = s.pid.ki;
+      if (isFiniteNumber(s.pid.kd)) kd.value = s.pid.kd;
+      kpVal.textContent = formatNumber(s.pid.kp);
+      kiVal.textContent = formatNumber(s.pid.ki, 2);
+      kdVal.textContent = formatNumber(s.pid.kd);
+    }
+    profTimes.value = (s.profileTimes || []).filter(isFiniteNumber).join(',');
+    profPressures.value = (s.profilePressures || []).filter(isFiniteNumber).join(',');
+    if (isFiniteNumber(c.maxPressure)) clMaxP.value = c.maxPressure;
+    if (isFiniteNumber(c.cycles)) clCycles.value = c.cycles;
+    if (isFiniteNumber(c.holdS)) clHold.value = c.holdS;
+    if (isFiniteNumber(c.pauseS)) clPause.value = c.pauseS;
+    if (isFiniteNumber(c.soakS)) clSoak.value = c.soakS;
+    wifiCur.textContent = s.wifiSsid || '(compiled-in)';
+    wifiSsid.value = s.wifiSsid || '';
+    loadHistory();
+  }
+
+  if (s.brewing && !brewing) {          // shot started: clear live plots
+    liveW.length = liveP.length = livePG.length = 0;
+  }
+  if (!s.brewing && brewing) {          // shot ended: refresh history
+    setTimeout(loadHistory, 1000);
+  }
+  brewing = !!s.brewing;
+
+  if (brewing) {
+    if (isFiniteNumber(s.shotTimer) && isFiniteNumber(s.weight)) {
+      liveW.push({ x: s.shotTimer, y: s.weight });
+    }
+    if (isFiniteNumber(s.shotTimer) && isFiniteNumber(s.pressure)) {
+      liveP.push({ x: s.shotTimer, y: s.pressure });
+    }
+    if (isFiniteNumber(s.shotTimer) && isFiniteNumber(s.goalPressure)) {
+      livePG.push({ x: s.shotTimer, y: s.goalPressure });
+    }
+    weightChart.update('none');
+    pressureChart.update('none');
+  }
+}
+
 async function poll() {
   try {
-    const s = await (await fetch('/state')).json();
+    const response = await fetch('/state');
+    if (!response.ok) throw new Error('state request failed: ' + response.status);
+    const s = await response.json();
     document.getElementById('conn').textContent = 'connected';
     document.getElementById('conn').className = 'ok';
-
-    const c = s.cleaning || {};
-    txt('tState', c.active ? 'Cleaning' : (s.brewing ? 'Brewing' : 'Idle'));
-    cleanStartBtn.disabled = !!c.active || s.brewing;
-    cleanContinueBtn.disabled = c.phase !== 'await_rinse';
-    document.getElementById('cleanStatus').textContent = cleanStatusText(c);
-    txt('tScale', s.scaleConnected ? 'Connected' : 'Offline');
-    document.getElementById('tScale').className = 'value ' + (s.scaleConnected ? 'ok' : 'bad');
-    startBtn.disabled = !s.scaleConnected;  // no shots without a scale
-    txt('tTime', s.shotTimer.toFixed(1) + ' s');
-    txt('tEnd', s.expectedEnd.toFixed(1));
-    txt('tWeight', s.weight.toFixed(1) + ' g');
-    txt('tGoalW', s.goalWeight.toFixed(1));
-    txt('tOffset', s.weightOffset.toFixed(1));
-    txt('tPressure', s.pressure.toFixed(1) + ' bar');
-    txt('tGoalP', s.goalPressure.toFixed(1));
-    txt('tPump', Math.round(s.pumpPwm / 255 * 100) + '%');
-    txt('tPwm', s.pumpPwm);
-    if (s.pid) {
-      txt('tPidOut', s.pid.out);
-      txt('tP', s.pid.p.toFixed(1)); txt('tI', s.pid.i.toFixed(1)); txt('tD', s.pid.d.toFixed(1));
-    }
-
-    // Populate editors once, so polling doesn't fight the user's edits
-    if (!initialized) {
-      initialized = true;
-      goalW.value = s.goalWeight;
-      offset.value = s.weightOffset; offsetVal.textContent = s.weightOffset.toFixed(1);
-      if (s.pid) {
-        kp.value = s.pid.kp; ki.value = s.pid.ki; kd.value = s.pid.kd;
-        kpVal.textContent = s.pid.kp; kiVal.textContent = s.pid.ki; kdVal.textContent = s.pid.kd;
-      }
-      profTimes.value = (s.profileTimes || []).join(',');
-      profPressures.value = (s.profilePressures || []).join(',');
-      clMaxP.value = c.maxPressure; clCycles.value = c.cycles;
-      clHold.value = c.holdS; clPause.value = c.pauseS; clSoak.value = c.soakS;
-      wifiCur.textContent = s.wifiSsid || '(compiled-in)';
-      wifiSsid.value = s.wifiSsid || '';
-      loadHistory();
-    }
-
-    if (s.brewing && !brewing) {          // shot started: clear live plots
-      liveW.length = liveP.length = livePG.length = 0;
-    }
-    if (!s.brewing && brewing) {          // shot ended: refresh history
-      setTimeout(loadHistory, 1000);
-    }
-    brewing = s.brewing;
-
-    if (brewing) {
-      liveW.push({ x: s.shotTimer, y: s.weight });
-      liveP.push({ x: s.shotTimer, y: s.pressure });
-      livePG.push({ x: s.shotTimer, y: s.goalPressure });
-      weightChart.update('none');
-      pressureChart.update('none');
+    try {
+      renderState(s);
+    } catch (e) {
+      console.error('Failed to render state', e);
     }
   } catch (e) {
     document.getElementById('conn').textContent = 'disconnected';
